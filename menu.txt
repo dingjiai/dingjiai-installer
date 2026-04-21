@@ -1,0 +1,6 @@
+TITLE=dingjiai Installer
+SUBTITLE=placeholder prototype
+1|System check|[placeholder] System check is not implemented yet.
+2|Install Claude|[placeholder] Install Claude is not implemented yet.
+3|Uninstall Claude|[placeholder] Uninstall Claude is not implemented yet.
+0|Exit|Bye.
