@@ -1,0 +1,79 @@
+# Claude CLI baseline notes
+
+This file tracks the shortest-path required baseline for the Claude CLI installation path.
+
+It is intentionally small for now. Add more required items later only after they are explicitly confirmed.
+
+## Current rule
+
+- For now, use Anthropic official requirements as the source of truth for the Claude CLI minimum baseline.
+- Because this repository is currently Windows-first, define the baseline primarily around the native Windows path.
+- Do not expand the must-install list just because a tool is commonly useful.
+- Expand the list only after the project explicitly confirms that an item belongs in the default baseline.
+
+## Current official minimum baseline for native Windows
+
+- Windows 10 1809+ or Windows Server 2019+
+- x64 or ARM64 processor
+- 4 GB+ RAM
+- internet connection
+- PowerShell or CMD shell
+- supported Claude access:
+  - Claude Pro, Max, Team, or Enterprise
+  - Claude Console
+  - or a supported cloud provider
+- Git for Windows
+
+## Current project-level default enhancement layer
+
+These items are not part of Anthropic's official minimum baseline, but are currently confirmed as the project-level default enhancement layer for the Windows-first Claude path.
+
+- `gh`
+- `rg`
+- Python
+- `pip`
+- Playwright
+- `jq`
+- `bat`
+- `7z`
+
+## Current optional enhancement layer
+
+These items are useful, but are currently treated as optional enhancements rather than part of the project default install layer.
+
+- `duf`
+- `doggo`
+- `btop4win`
+- `pandoc`
+
+## Not currently part of the official minimum baseline
+
+- Node.js
+  - Node.js 18+ is required only for the npm install method
+  - Node.js is not required for the recommended native installer path
+- additional skills
+- extra helper tools beyond the official baseline
+
+## Broader tool inventory tracking
+
+- `notes/tool-inventory.md` tracks the broader helper-tool list and the current local installed/not-installed snapshot.
+- Inclusion in that note does not automatically make an item part of the official minimum baseline.
+
+## Current official install path to mirror first
+
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
+
+## Iteration rule
+
+- Keep the first baseline official-first and shortest-path.
+- Add new must-install items only after explicit confirmation.
+- Do not add extra `settings.json` content beyond the currently confirmed items yet.
+- The immediate goal is to get the framework running and ship the first version before expanding the bundle.
+- When the baseline grows, append new required items here instead of replacing the history in chat.
+
+## Sources
+
+- Claude Code docs — Advanced setup: https://code.claude.com/docs/en/setup.md
+- Claude Code docs — Quickstart: https://code.claude.com/docs/en/quickstart.md

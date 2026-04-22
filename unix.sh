@@ -11,7 +11,7 @@ declare -A MENU_MESSAGES=()
 
 load_menu() {
   if [[ ! -f "$MENU_FILE" ]]; then
-    printf 'Missing menu definition: %s\n' "$MENU_FILE" >&2
+    printf '缺少菜单定义：%s\n' "$MENU_FILE" >&2
     exit 1
   fi
 
@@ -47,7 +47,7 @@ show_menu() {
   done
 
   printf '\n'
-  printf 'Select an option: '
+  printf '请选择一个选项: '
 }
 
 handle_choice() {
@@ -55,7 +55,7 @@ handle_choice() {
   local message="${MENU_MESSAGES[$choice]-}"
 
   if [[ -z "$message" ]]; then
-    printf '\nInvalid selection.\n'
+    printf '\n无效选项。\n'
     return
   fi
 
@@ -72,6 +72,6 @@ while true; do
   show_menu
   read -r choice
   handle_choice "$choice"
-  printf '\nPress Enter to continue...'
+  printf '\n按回车继续...'
   read -r _
 done

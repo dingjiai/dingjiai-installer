@@ -1,6 +1,6 @@
-TITLE=dingjiai Installer
-SUBTITLE=placeholder prototype
-1|System check|[placeholder] System check is not implemented yet.
-2|Install Claude|[placeholder] Install Claude is not implemented yet.
-3|Uninstall Claude|[placeholder] Uninstall Claude is not implemented yet.
-0|Exit|Bye.
+TITLE=dingjiai 安装器
+SUBTITLE=当前为原型占位版
+1|安装 Claude 和依赖|[占位] 安装 Claude 和依赖的流程暂未实现。
+2|更新 Claude 和依赖|[占位] 更新 Claude 和依赖的流程暂未实现。
+3|卸载 Claude 和依赖|[占位] 卸载 Claude 和依赖的流程暂未实现。
+0|退出|已退出。

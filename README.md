@@ -30,6 +30,56 @@ https://get.dingjiai.com/installer/windows
 
 Both local entry scripts load the same placeholder menu from `menu.txt`.
 
+The installer now performs a real first-stage basic environment check before showing the placeholder top-level menu.
+This first stage is used to understand the current environment and prepare the second stage, rather than block imperfect environments by default.
+
+## Claude path tool layering
+
+The current Windows-first Claude path uses three layers:
+
+### 1. Anthropic official minimum baseline
+
+This layer follows Anthropic's official native Windows requirements first.
+
+- Windows 10 1809+ or Windows Server 2019+
+- x64 or ARM64 processor
+- 4 GB+ RAM
+- internet connection
+- PowerShell or CMD shell
+- supported Claude access
+- Git for Windows
+
+### 2. Project default enhancement layer
+
+This layer is not part of Anthropic's official minimum baseline, but is currently treated as the default install set for the Windows-first Claude path and should be installed automatically by the default installer flow.
+
+- `gh`
+- `rg`
+- Python
+- `pip`
+- Playwright
+- `jq`
+- `bat`
+- `7z`
+
+### 3. Optional enhancement layer
+
+These tools are useful, but are currently optional rather than part of the default install set.
+
+- `duf`
+- `doggo`
+- `btop4win`
+- `pandoc`
+
+For the durable baseline and package mapping, see:
+
+- `notes/claude-cli-baseline.md`
+- `notes/tool-inventory.md`
+
+## Architecture notes
+
+- `notes/windows-architecture.md` — current Windows-first installer architecture, hosting, and admin strategy
+
 ## GitHub Pages publishing layout
 
 Published files should live under `docs/`:
@@ -41,10 +91,10 @@ Published files should live under `docs/`:
 
 ## Current menu
 
-- `1` System check
-- `2` Install Claude
-- `3` Uninstall Claude
-- `0` Exit
+- `1` 安装 Claude 和依赖
+- `2` 更新 Claude 和依赖
+- `3` 卸载 Claude 和依赖
+- `0` 退出
 
 ## Project status
 
@@ -59,9 +109,10 @@ It already proves:
 - the structure is ready for real install logic later
 
 Not implemented yet:
-- real system checks
-- real Claude install flow
-- real Claude uninstall flow
+- real install Claude and dependencies flow
+- real update Claude and dependencies flow
+- real uninstall Claude and dependencies flow
+- persisted environment profile reuse across multiple runs
 - GitHub Pages configuration for serving `docs/`
 - DNS setup for `get.dingjiai.com`
 - Unix remote bootstrap endpoint
