@@ -87,6 +87,9 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Menus should stay numbered and obvious.
 - Before showing the top-level menu, the installer should first perform a basic environment check and decide whether relaunch is needed.
 - This first stage is for understanding the current environment and preparing the next stage, not for rejecting imperfect environments by default.
+- The first stage should print short Chinese-first line-by-line results before entering the top-level menu.
+- The first stage should at minimum identify Windows environment, PowerShell version, process/OS bitness, privilege mode, user-scope write access, and basic network reachability.
+- The first stage should produce a current-run environment profile that later task executors can reuse.
 - The top-level menu is shown after that initial check completes.
 - The current v1 top-level menu is:
   - `1` 安装 Claude 和依赖
@@ -100,6 +103,10 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - The default path should minimize questions and decisions.
 - Do not ask the user to opt into each baseline recommended tool one by one when it is part of the agreed default experience.
 - For beginner-first flows, do not over-explain why each best-practice tool is included; ship the default best-practice path directly.
+- For core dependency tools, prefer one best-practice path with minimal branching.
+- Core dependency handling should use project-defined trust checks such as minimum allowed version, official identity fields, and active command resolution rather than open-ended source analysis.
+- If an existing tool instance does not meet the trusted standard, the installer should automatically converge to the project-approved version and make that version the active one for later steps.
+- Keeping an old version is acceptable if it does not remain the active version for the installer path.
 - If a feature is placeholder-only, say so plainly. Never imply unfinished flows are real.
 
 ## Architecture rules
@@ -114,9 +121,14 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - The remote bootstrap should stay thin.
 - Heavy logic should live in local payloads, not the one-line bootstrap entry.
 - Relaunch only when needed. Do not open a new terminal by default unless a constraint requires it.
+- The startup detection phase should live in the local launcher before the menu, not in the thin bootstrap.
 - Prefer capability-based detection over edition-based branching.
 - Check real conditions such as admin rights, 64-bit process, PowerShell version, network reachability, filesystem write access, PATH update feasibility, and dependency presence.
+- For the first startup stage, prefer result styles such as ready, auto-adapt, defer, and info instead of treating imperfect environments as default blockers.
 - The menu layer should control flow only, not contain heavy installation logic.
+- Core dependency checkpoints should use a consistent structure: discovery, allowance, action, new-shell validation, component configuration if needed, and final re-validation.
+- Each core dependency checkpoint should finish its own PATH, active-version, scope, and health-state收尾 before the next component begins.
+- Component-level optional configuration belongs to that component's own checkpoint, not to the later Claude product configuration stage.
 - Concrete work should be split into task-like executors such as doctor, dependency installs, repair, and uninstall.
 - Task executors should be idempotent whenever practical.
 
@@ -166,7 +178,8 @@ irm https://get.dingjiai.com/win.ps1 | iex
 
 ## Current stage rule
 - This repository is currently a shell prototype.
-- The current prototype already includes a real first-stage startup detection pass before entering the placeholder menu.
+- The intended flow includes a real first-stage startup detection pass before entering the placeholder menu.
+- That startup detection flow is still being stabilized and should not yet be treated as production-ready.
 - Placeholder menu actions are still acceptable at this stage.
 - Do not describe placeholder flows as production-ready.
 - Before wiring real install logic, keep architecture and user journey decisions aligned with this file.

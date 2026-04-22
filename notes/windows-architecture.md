@@ -96,13 +96,32 @@ Instead, detect real capabilities and constraints:
 
 For the first startup stage, prioritize basic environment identification that helps the next stage choose how to proceed.
 Do not treat every imperfect condition as a blocker by default.
-The current implemented startup stage focuses on Windows environment, PowerShell, process bitness, privilege mode, user-scope write access, and basic network reachability before entering the menu.
+
+Recommended first-stage scope:
+
+- Windows environment
+- PowerShell version and edition
+- 64-bit process and 64-bit OS state
+- privilege mode
+- user-scope write access
+- basic network reachability
+
+Recommended first-stage result model:
+
+- ready
+- auto-adapt
+- defer
+- info
+
+The goal of this stage is to produce a current-run environment profile for later task executors.
+The implementation of this startup detection flow is still being stabilized and should not yet be treated as production-ready.
 
 ### 4. Menu orchestrator
 
 The menu layer should control flow only.
 It is entered after the initial capability detection and any needed relaunch are complete.
 The first startup stage should produce a simple environment profile that later task executors can reuse inside the same run.
+The thin bootstrap should only hand off into this stage rather than own the product-level environment decisions.
 
 It should:
 
@@ -128,6 +147,17 @@ Concrete work should be split into task units such as:
 These tasks should be as idempotent as possible.
 
 Running them multiple times should not corrupt the machine state.
+
+For core dependencies, each component should follow one consistent checkpoint model:
+
+1. discovery
+2. allowance
+3. action
+4. new-shell validation
+5. component configuration if needed
+6. final new-shell re-validation
+
+A component is not complete until its own PATH, active version, scope, and health state are fully settled.
 
 ### 6. State and logs
 
@@ -189,6 +219,17 @@ User-facing principle:
 ## Dependency-chain focus
 
 Unlike generic system scripts, this project is primarily a dependency installer.
+
+For core dependency tools, the default path should prefer one best-practice solution with minimal branching.
+The installer should not rely on open-ended source analysis for these tools.
+Instead, it should compare the current tool state against project-defined trust checks such as:
+
+- minimum allowed version
+- official identity fields
+- active command resolution in a new shell
+
+If the current tool does not meet that trusted standard, the installer should automatically converge to the project-approved version and make it the active version for later steps.
+Keeping an older or alternate version is acceptable only if it does not remain the active version for the installer path.
 
 The main Windows dependency chain is expected to include:
 

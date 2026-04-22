@@ -179,16 +179,16 @@ function Invoke-StartupDetection {
     Write-Host 'dingjiai 安装器'
     Write-Host '正在识别当前环境...'
 
-    $isWindows = $false
+    $detectedWindows = $false
     if ($PSVersionTable.ContainsKey('Platform')) {
-        $isWindows = $PSVersionTable.Platform -eq 'Win32NT'
+        $detectedWindows = $PSVersionTable.Platform -eq 'Win32NT'
     }
     elseif (-not [string]::IsNullOrWhiteSpace($env:OS)) {
-        $isWindows = $env:OS -eq 'Windows_NT'
+        $detectedWindows = $env:OS -eq 'Windows_NT'
     }
 
-    $script:StartupProfile.Facts.IsWindows = $isWindows
-    if ($isWindows) {
+    $script:StartupProfile.Facts.IsWindows = $detectedWindows
+    if ($detectedWindows) {
         Add-StartupResult -Status '已就绪' -TitleText 'Windows 运行环境' -Detail '已识别为 Windows'
     }
     else {
@@ -280,7 +280,6 @@ function Show-StartupSummary {
 
     Write-Host ''
     Write-Host "环境识别完成：已就绪 $readyCount 项，将自动适配 $autoCount 项，稍后处理 $laterCount 项，仅提示 $infoCount 项。"
-    Read-Host '按回车进入主菜单' | Out-Null
 }
 
 function Show-Menu {

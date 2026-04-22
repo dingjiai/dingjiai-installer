@@ -11,6 +11,8 @@ Inclusion here means the project wants to track the tool, not that it is automat
 - This file tracks the project enhancement layers on top of that baseline.
 - The project default enhancement layer is what the current Windows-first default install path should install automatically.
 - The optional enhancement layer is useful, but not required for the current default install path.
+- For core dependency tools, exact trust fields used by installation logic should be defined in the baseline note first.
+This inventory file should track package identities, enhancement layers, and local snapshots rather than become the source of truth for minimum allowed versions.
 
 ## Current tracked tools
 

@@ -10,6 +10,7 @@ It is intentionally small for now. Add more required items later only after they
 - Because this repository is currently Windows-first, define the baseline primarily around the native Windows path.
 - Do not expand the must-install list just because a tool is commonly useful.
 - Expand the list only after the project explicitly confirms that an item belongs in the default baseline.
+- For core dependency tools, later implementation should define explicit minimum allowed versions and official identity fields before automating upgrade or convergence logic.
 
 ## Current official minimum baseline for native Windows
 
@@ -53,6 +54,25 @@ These items are useful, but are currently treated as optional enhancements rathe
   - Node.js is not required for the recommended native installer path
 - additional skills
 - extra helper tools beyond the official baseline
+
+## Core dependency identity placeholders for framework work
+
+The values in this section are temporary placeholders for framework development only.
+They are not the final documented standards and must be replaced with evidence-backed values before shipping production logic.
+
+### Git temporary placeholder identity fields
+
+- TEMP_PLACEHOLDER_FOR_FRAMEWORK
+- minimum allowed version: `2.40.0`
+- official product name: `Git for Windows`
+- official publisher / signer: `The Git Development Community`
+- official package identity: `Git.Git`
+- expected version string marker: `windows.`
+- trusted path shapes:
+  - `C:\Program Files\Git\cmd\git.exe`
+  - `C:\Program Files\Git\bin\git.exe`
+  - `C:\Users\<user>\AppData\Local\Programs\Git\cmd\git.exe`
+  - `C:\Users\<user>\AppData\Local\Programs\Git\bin\git.exe`
 
 ## Broader tool inventory tracking
 

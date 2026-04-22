@@ -30,8 +30,15 @@ https://get.dingjiai.com/installer/windows
 
 Both local entry scripts load the same placeholder menu from `menu.txt`.
 
-The installer now performs a real first-stage basic environment check before showing the placeholder top-level menu.
-This first stage is used to understand the current environment and prepare the second stage, rather than block imperfect environments by default.
+The best-practice product flow for this project is:
+
+- run a first-stage basic environment check
+- decide whether relaunch is needed
+- keep a current-run environment profile for the next stage
+- then show the top-level menu
+
+This first stage should understand the current environment and prepare the second stage, rather than block imperfect environments by default.
+The implementation of this startup detection flow is still being stabilized and should not yet be treated as production-ready.
 
 ## Claude path tool layering
 
