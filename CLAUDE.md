@@ -129,6 +129,19 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Core dependency checkpoints should use a consistent structure: discovery, allowance, action, new-shell validation, component configuration if needed, and final re-validation.
 - Each core dependency checkpoint should finish its own PATH, active-version, scope, and health-state收尾 before the next component begins.
 - Component-level optional configuration belongs to that component's own checkpoint, not to the later Claude product configuration stage.
+- The current install path should treat `winget` as the default base installer capability and clear that checkpoint before Git and later tools.
+- If `winget` is missing or unhealthy, the installer should resolve the `winget` checkpoint before any later install checkpoint continues.
+- The current intended install order for `1` 安装 Claude 和依赖 is:
+  - `winget` checkpoint
+  - Git checkpoint
+  - Claude checkpoint
+  - default enhancement layer checkpoints
+  - Claude product configuration
+  - final end-to-end validation
+- Core install actions should currently prefer one `winget`-based path for Git, Claude, and the default enhancement tools unless the user later confirms a different unique solution.
+- Git should currently use the project placeholder trust fields in `notes/claude-cli-baseline.md` until evidence-backed values replace them.
+- Git discovery should currently keep all planned fields as required inputs before any simplification.
+- Git install and upgrade actions should currently assume one best-practice path through `winget` package `Git.Git`.
 - Concrete work should be split into task-like executors such as doctor, dependency installs, repair, and uninstall.
 - Task executors should be idempotent whenever practical.
 
@@ -178,11 +191,14 @@ irm https://get.dingjiai.com/win.ps1 | iex
 
 ## Current stage rule
 - This repository is currently a shell prototype.
-- The intended flow includes a real first-stage startup detection pass before entering the placeholder menu.
+- The intended flow includes a real first-stage startup detection pass before entering the menu.
 - That startup detection flow is still being stabilized and should not yet be treated as production-ready.
-- Placeholder menu actions are still acceptable at this stage.
-- Do not describe placeholder flows as production-ready.
-- Before wiring real install logic, keep architecture and user journey decisions aligned with this file.
+- Menu option `1` now implements the first real milestone only:
+  - `winget` checkpoint
+  - Git checkpoint
+- Menu options `2` and `3` are still placeholder-only at this stage.
+- Do not describe unfinished flows as production-ready.
+- Before wiring later install logic, keep architecture and user journey decisions aligned with this file.
 - Do not add extra `settings.json` defaults beyond the currently confirmed items yet.
 - The immediate goal is to get the framework running and publish the first version before expanding the bundle.
 

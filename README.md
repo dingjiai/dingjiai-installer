@@ -87,6 +87,8 @@ For the durable baseline and package mapping, see:
 
 - `notes/windows-architecture.md` — current Windows-first installer architecture, hosting, and admin strategy
 
+Current implementation focus is to make the `winget` checkpoint and Git checkpoint real first, before wiring Claude and the default enhancement layer actions.
+
 ## GitHub Pages publishing layout
 
 Published files should live under `docs/`:
@@ -105,7 +107,10 @@ Published files should live under `docs/`:
 
 ## Project status
 
-This repository is the shell prototype only.
+This repository is still a Windows-first shell prototype, but option `1` now runs a real first milestone for:
+
+- `winget` checkpoint
+- Git checkpoint
 
 It already proves:
 - two platform entry points can share one menu definition
@@ -114,11 +119,13 @@ It already proves:
 - the installer distribution can live on a dedicated subdomain without touching the main site
 - the Windows files can be hosted on GitHub Pages instead of your app server
 - the structure is ready for real install logic later
+- option `1` can now do real `winget` and Git discovery / allowance / action / validation work before stopping at the first milestone
 
 Not implemented yet:
-- real install Claude and dependencies flow
-- real update Claude and dependencies flow
-- real uninstall Claude and dependencies flow
+- real Claude checkpoint action flow
+- real default enhancement layer action flow
+- real update flow for option `2`
+- real uninstall flow for option `3`
 - persisted environment profile reuse across multiple runs
 - GitHub Pages configuration for serving `docs/`
 - DNS setup for `get.dingjiai.com`

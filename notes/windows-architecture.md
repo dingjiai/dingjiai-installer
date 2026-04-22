@@ -159,6 +159,20 @@ For core dependencies, each component should follow one consistent checkpoint mo
 
 A component is not complete until its own PATH, active version, scope, and health state are fully settled.
 
+Current intended checkpoint order for `安装 Claude 和依赖` is:
+
+1. `winget` checkpoint
+2. Git checkpoint
+3. Claude checkpoint
+4. default enhancement layer checkpoints
+5. Claude product configuration
+6. final end-to-end validation
+
+`winget` is currently treated as the base installer capability for the whole install path.
+If `winget` is missing or unhealthy, that checkpoint should be resolved before Git or Claude work begins.
+The current minimal real implementation target is `winget checkpoint` + `Git checkpoint`, and the first test stop should be after Git completes.
+That first milestone is now wired into menu option `1`; later checkpoints remain for Claude and the default enhancement layer.
+
 ### 6. State and logs
 
 Installer state should live in a user-local directory such as:
@@ -231,13 +245,21 @@ Instead, it should compare the current tool state against project-defined trust 
 If the current tool does not meet that trusted standard, the installer should automatically converge to the project-approved version and make it the active version for later steps.
 Keeping an older or alternate version is acceptable only if it does not remain the active version for the installer path.
 
+For current framework work:
+
+- `winget` repair should first try the shortest source recovery path and escalate to reinstall if the checkpoint is still unhealthy.
+- `winget` install and reinstall should share one App Installer payload path once that payload is connected.
+- current App Installer payload metadata is intentionally minimal and should only track package name, identity, and version.
+- Git discovery should currently keep all planned fields as required inputs.
+- Git allowance should currently reduce to `skip`, `repair`, `upgrade`, `install`, or `reinstall` based on trusted identity, minimum version, and active command resolution.
+- Git install and upgrade should currently assume the single `winget` package path through `Git.Git`.
+
 The main Windows dependency chain is expected to include:
 
+- `winget` as the base installer capability
 - Git
-- Node.js
-- npm
 - Claude CLI
-- optional agent packages later
+- project default enhancement tools later
 
 This means the most important architecture questions are not edition detection but:
 

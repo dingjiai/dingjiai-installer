@@ -1,6 +1,6 @@
-TITLE=dingjiai 安装器
-SUBTITLE=当前为原型占位版
-1|安装 Claude 和依赖|[占位] 安装 Claude 和依赖的流程暂未实现。
+﻿TITLE=dingjiai 安装器
+SUBTITLE=安装流程已接入 winget + Git 首个里程碑
+1|安装 Claude 和依赖|已进入安装流程：当前阶段会处理 winget 和 Git，然后停止在首个里程碑。
 2|更新 Claude 和依赖|[占位] 更新 Claude 和依赖的流程暂未实现。
 3|卸载 Claude 和依赖|[占位] 卸载 Claude 和依赖的流程暂未实现。
 0|退出|已退出。

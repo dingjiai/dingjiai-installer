@@ -71,8 +71,33 @@ They are not the final documented standards and must be replaced with evidence-b
 - trusted path shapes:
   - `C:\Program Files\Git\cmd\git.exe`
   - `C:\Program Files\Git\bin\git.exe`
+  - `C:\Program Files\Git\mingw64\bin\git.exe`
   - `C:\Users\<user>\AppData\Local\Programs\Git\cmd\git.exe`
   - `C:\Users\<user>\AppData\Local\Programs\Git\bin\git.exe`
+  - `C:\Users\<user>\AppData\Local\Programs\Git\mingw64\bin\git.exe`
+- current placeholder identity match rule:
+  - `versionMarkerMatched = yes`
+  - `pathShapeMatched = yes`
+  - `productNameMatched = yes`
+  - then treat `officialIdentityMatched`, `publisherMatched`, and `packageIdentityMatched` as matched for current framework work
+- current discovery rule:
+  - all planned Git discovery fields are currently required inputs
+- current allowance buckets:
+  - `skip`
+  - `repair`
+  - `upgrade`
+  - `install`
+  - `reinstall`
+- current framework action path:
+  - install through `winget install --id Git.Git`
+  - upgrade through `winget upgrade` for the same package
+  - keep older Git copies only if they do not remain the active installer-path version
+- current implemented framework behavior:
+  - collect all planned Git discovery fields in the launcher
+  - treat `cmd`, `bin`, and `mingw64\\bin` Git executables under the documented Git for Windows roots as trusted path shapes for the current placeholder rules
+  - use a new PowerShell shell check for active command path and version output before declaring the Git checkpoint healthy
+  - reduce Git allowance to `skip`, `repair`, `upgrade`, `install`, or `reinstall` before action selection
+  - build a concrete winget action plan before execution so `install`, `upgrade`, and `repair` can choose user or machine scope from the currently active Git path
 
 ## Broader tool inventory tracking
 
