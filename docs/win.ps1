@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$PayloadFiles = @('win.ps1', 'menu.txt')
+$PayloadFiles = @('win.ps1', 'menu.txt', 'main.cmd')
 
 function Initialize-InstallRoot {
     if (-not (Test-Path -LiteralPath $InstallRoot)) {

@@ -4,22 +4,16 @@ A minimal open-source installer shell prototype with two entry points.
 
 ## Entry points
 
-### Windows PowerShell local launcher
-
-```powershell
-./win.ps1
-```
-
-### Windows remote bootstrap target
+### Windows PowerShell bootstrap target
 
 ```powershell
 irm https://get.dingjiai.com/win.ps1 | iex
 ```
 
-Current payload base URL used by the bootstrap:
+### Windows local bootstrap source
 
-```text
-https://get.dingjiai.com/installer/windows
+```powershell
+./bootstrap/win.ps1 -SourceDir ./docs/installer/windows
 ```
 
 ### macOS / Linux local launcher
@@ -28,17 +22,32 @@ https://get.dingjiai.com/installer/windows
 ./unix.sh
 ```
 
-Both local entry scripts load the same placeholder menu from `menu.txt`.
+Current payload base URL used by the Windows bootstrap:
 
-The best-practice product flow for this project is:
+```text
+https://get.dingjiai.com/installer/windows
+```
 
-- run a first-stage basic environment check
-- decide whether relaunch is needed
-- keep a current-run environment profile for the next stage
-- then show the top-level menu
+## Windows interaction model
 
-This first stage should understand the current environment and prepare the second stage, rather than block imperfect environments by default.
-The implementation of this startup detection flow is still being stabilized and should not yet be treated as production-ready.
+The agreed Windows-first interaction model is now:
+
+1. start from any supported shell entry
+2. perform only the minimum bootstrap work in that original shell
+3. relaunch into a dedicated administrator `cmd.exe` window
+4. run the real installer UI, numbered menus, and all later install interactions inside that window
+
+For Windows, the original PowerShell or terminal session is only the bootstrap host.
+The real menu-driven installer experience should not depend on whether the user started from Windows Terminal, Windows PowerShell 5.1, PowerShell 7, or another supported shell.
+
+## Current menu
+
+The intended main Windows menu remains:
+
+- `1` 安装 Claude 和依赖
+- `2` 更新 Claude 和依赖
+- `3` 卸载 Claude 和依赖
+- `0` 退出
 
 ## Claude path tool layering
 
@@ -85,9 +94,9 @@ For the durable baseline and package mapping, see:
 
 ## Architecture notes
 
-- `notes/windows-architecture.md` — current Windows-first installer architecture, hosting, and admin strategy
+- `notes/windows-architecture.md` — current Windows-first installer architecture, hosting, relaunch model, and admin strategy
 
-Current implementation focus is to make the `winget` checkpoint and Git checkpoint real first, before wiring Claude and the default enhancement layer actions.
+Current implementation focus is still to make the `winget` checkpoint and Git checkpoint real first, before wiring Claude and the default enhancement layer actions.
 
 ## GitHub Pages publishing layout
 
@@ -95,26 +104,16 @@ Published files should live under `docs/`:
 
 - `docs/CNAME` — custom domain for Pages
 - `docs/win.ps1` — Windows bootstrap entry
-- `docs/installer/windows/win.ps1` — local Windows launcher payload
+- `docs/installer/windows/win.ps1` — Windows launcher payload
+- `docs/installer/windows/main.cmd` — Windows main menu host
 - `docs/installer/windows/menu.txt` — Windows menu payload
-
-## Current menu
-
-- `1` 安装 Claude 和依赖
-- `2` 更新 Claude 和依赖
-- `3` 卸载 Claude 和依赖
-- `0` 退出
 
 ## Project status
 
-This repository is still a Windows-first shell prototype, but option `1` now runs a real first milestone for:
-
-- `winget` checkpoint
-- Git checkpoint
+This repository is still a Windows-first shell prototype.
 
 It already proves:
 - two platform entry points can share one menu definition
-- the basic menu loop works on PowerShell and Unix shell
 - the Windows bootstrap can fetch or copy payload files before launching
 - the installer distribution can live on a dedicated subdomain without touching the main site
 - the Windows files can be hosted on GitHub Pages instead of your app server
@@ -122,6 +121,7 @@ It already proves:
 - option `1` can now do real `winget` and Git discovery / allowance / action / validation work before stopping at the first milestone
 
 Not implemented yet:
+- the new dedicated administrator `cmd.exe` Windows main UI handoff
 - real Claude checkpoint action flow
 - real default enhancement layer action flow
 - real update flow for option `2`
@@ -133,10 +133,12 @@ Not implemented yet:
 
 ## Files
 
-- `win.ps1` — local Windows launcher
+- `win.ps1` — local Windows launcher and backend task entry
+- `main.cmd` — local Windows main menu host
 - `bootstrap/win.ps1` — local bootstrap source version
 - `docs/win.ps1` — published Windows bootstrap entry
 - `docs/installer/windows/win.ps1` — published Windows launcher payload
+- `docs/installer/windows/main.cmd` — published Windows main menu host
 - `docs/installer/windows/menu.txt` — published Windows menu payload
 - `unix.sh` — macOS/Linux local launcher
 - `menu.txt` — shared local menu definition

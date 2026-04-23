@@ -1,4 +1,5 @@
 ﻿param(
+    [string]$Action = '',
     [string]$MenuFilePath = '',
     [switch]$SkipStartupPreflight
 )
@@ -176,6 +177,98 @@ function Invoke-NativeCommand([string]$FilePath, [string[]]$Arguments) {
     }
 }
 
+function Get-CmdExecutablePath {
+    if (-not [string]::IsNullOrWhiteSpace($env:ComSpec) -and (Test-Path -LiteralPath $env:ComSpec)) {
+        return $env:ComSpec
+    }
+
+    $commandInfo = Get-Command cmd.exe -ErrorAction SilentlyContinue
+    if ($null -eq $commandInfo) {
+        return ''
+    }
+
+    return Get-CommandExecutablePath -CommandInfo $commandInfo
+}
+
+function Get-CmdAutorunValue([string]$RegistryPath) {
+    try {
+        $item = Get-ItemProperty -LiteralPath $RegistryPath -Name AutoRun -ErrorAction Stop
+        return [string]$item.AutoRun
+    }
+    catch {
+        return ''
+    }
+}
+
+function Invoke-BootstrapHandoffChecks {
+    $script:StartupProfile = [ordered]@{
+        Facts = [ordered]@{}
+        Results = [System.Collections.Generic.List[object]]::new()
+        Summary = [ordered]@{}
+    }
+
+    Write-Host ''
+    Write-Host 'dingjiai 安装器'
+    Write-Host '正在准备管理员 CMD 主窗口...'
+
+    $detectedWindows = $false
+    if ($PSVersionTable.ContainsKey('Platform')) {
+        $detectedWindows = $PSVersionTable.Platform -eq 'Win32NT'
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:OS)) {
+        $detectedWindows = $env:OS -eq 'Windows_NT'
+    }
+
+    Add-StartupResult -Status ($(if ($detectedWindows) { '已就绪' } else { '稍后处理' })) -TitleText 'Windows 运行环境' -Detail ($(if ($detectedWindows) { '已识别为 Windows' } else { '当前不是 Windows，无法继续打开 Windows 主界面' }))
+    if (-not $detectedWindows) {
+        return $false
+    }
+
+    $powerShellVersion = $PSVersionTable.PSVersion.ToString()
+    $powerShellEdition = if ($PSVersionTable.ContainsKey('PSEdition')) { $PSVersionTable.PSEdition } else { 'Unknown' }
+    Add-StartupResult -Status '仅提示' -TitleText '启动壳' -Detail "$powerShellVersion ($powerShellEdition)"
+
+    $mainCmdPath = Join-Path $ScriptDir 'main.cmd'
+    Add-StartupResult -Status ($(if (Test-Path -LiteralPath $mainCmdPath) { '已就绪' } else { '稍后处理' })) -TitleText '主菜单脚本' -Detail ($(if (Test-Path -LiteralPath $mainCmdPath) { $mainCmdPath } else { '缺少 main.cmd' }))
+    if (-not (Test-Path -LiteralPath $mainCmdPath)) {
+        return $false
+    }
+
+    Add-StartupResult -Status '已就绪' -TitleText 'PowerShell 后端' -Detail $PSCommandPath
+
+    $cmdPath = Get-CmdExecutablePath
+    if ([string]::IsNullOrWhiteSpace($cmdPath)) {
+        Add-StartupResult -Status '稍后处理' -TitleText 'CMD 宿主' -Detail '找不到 cmd.exe'
+        return $false
+    }
+
+    $cmdCheck = Invoke-NativeCommand -FilePath $cmdPath -Arguments @('/d', '/c', 'echo CMD is working')
+    if ($cmdCheck.ExitCode -eq 0 -and (($cmdCheck.Output -join ' ') -match 'CMD is working')) {
+        Add-StartupResult -Status '已就绪' -TitleText 'CMD 宿主' -Detail $cmdPath
+    }
+    else {
+        Add-StartupResult -Status '稍后处理' -TitleText 'CMD 宿主' -Detail 'cmd.exe 不能正常响应'
+        return $false
+    }
+
+    $hkcuAutorun = Get-CmdAutorunValue -RegistryPath 'HKCU:\Software\Microsoft\Command Processor'
+    if (-not [string]::IsNullOrWhiteSpace($hkcuAutorun)) {
+        Add-StartupResult -Status '仅提示' -TitleText 'CMD AutoRun(HKCU)' -Detail $hkcuAutorun
+    }
+
+    $hklmAutorun = Get-CmdAutorunValue -RegistryPath 'HKLM:\Software\Microsoft\Command Processor'
+    if (-not [string]::IsNullOrWhiteSpace($hklmAutorun)) {
+        Add-StartupResult -Status '仅提示' -TitleText 'CMD AutoRun(HKLM)' -Detail $hklmAutorun
+    }
+
+    $readyCount = @($script:StartupProfile.Results | Where-Object { $_.Status -eq '已就绪' }).Count
+    $laterCount = @($script:StartupProfile.Results | Where-Object { $_.Status -eq '稍后处理' }).Count
+    $infoCount = @($script:StartupProfile.Results | Where-Object { $_.Status -eq '仅提示' }).Count
+    Write-Host ''
+    Write-Host "准备完成：已就绪 $readyCount 项，稍后处理 $laterCount 项，仅提示 $infoCount 项。"
+    return $laterCount -eq 0
+}
+
 function Get-ValidationShellPath {
     if (-not [string]::IsNullOrWhiteSpace($script:ValidationShellPath)) {
         return $script:ValidationShellPath
@@ -208,11 +301,6 @@ function Get-ValidationShellPath {
 function Invoke-NewShellCommand([string]$CommandText) {
     $shellPath = Get-ValidationShellPath
     return Invoke-NativeCommand -FilePath $shellPath -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $CommandText)
-}
-
-function Write-Step([string]$Text) {
-    Write-Host ''
-    Write-Host "==> $Text"
 }
 
 function Get-VersionFromText([string]$Text) {
@@ -851,14 +939,69 @@ function Invoke-Choice([string]$Choice) {
     }
 }
 
-Import-Menu
-Invoke-StartupPreflight
-Invoke-StartupDetection
-Show-StartupSummary
+function Start-CmdMainUi {
+    if (-not (Invoke-BootstrapHandoffChecks)) {
+        throw '管理员 CMD 主窗口准备检查未通过。'
+    }
 
-while ($true) {
-    Show-Menu
-    $choice = Read-Host '请选择一个选项'
-    Invoke-Choice $choice
-    Read-Host '按回车继续' | Out-Null
+    $mainCmdPath = Join-Path $ScriptDir 'main.cmd'
+    if (-not (Test-Path -LiteralPath $mainCmdPath)) {
+        throw "缺少主菜单脚本：$mainCmdPath"
+    }
+
+    $quotedMainCmdPath = '"' + $mainCmdPath + '"'
+    $arguments = "/k $quotedMainCmdPath"
+
+    Start-Process -FilePath 'cmd.exe' -ArgumentList $arguments -Verb RunAs | Out-Null
+    Write-Host ''
+    Write-Host '已打开管理员 CMD 主窗口，请在新窗口中继续操作。'
+    exit 0
 }
+
+Import-Menu
+
+if (-not [string]::IsNullOrWhiteSpace($Action)) {
+    switch ($Action) {
+        'install' {
+            Invoke-StartupPreflight
+            Invoke-StartupDetection
+            Show-StartupSummary
+            if (-not $script:StartupProfile.Facts.IsWindows) {
+                throw '当前环境不是 Windows，无法继续执行安装流程。'
+            }
+
+            if (-not (Invoke-WingetCheckpoint)) {
+                exit 1
+            }
+
+            if (-not (Invoke-GitCheckpoint)) {
+                exit 1
+            }
+
+            Write-Host ''
+            Write-Host '已完成首个真实里程碑：winget + Git。'
+            Write-Host '当前流程在 Git checkpoint 后停止。'
+            exit 0
+        }
+        'bootstrap-checks' {
+            if (Invoke-BootstrapHandoffChecks) {
+                exit 0
+            }
+
+            exit 1
+        }
+        'update' {
+            Write-Host '更新功能正在准备中，当前版本暂未开放。'
+            exit 0
+        }
+        'uninstall' {
+            Write-Host '卸载功能正在准备中，当前版本暂未开放。'
+            exit 0
+        }
+        default {
+            throw "未识别的 Action：$Action"
+        }
+    }
+}
+
+Start-CmdMainUi

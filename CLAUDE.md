@@ -80,17 +80,18 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - The ideal user journey is:
   1. choose platform
   2. copy one command
-  3. run initial basic environment detection
-  4. see a numbered menu
-  5. choose a task
-  6. get a clear result and next step
+  3. start from any supported shell entry
+  4. automatically relaunch into the dedicated Windows main UI window
+  5. see a numbered menu
+  6. choose a task
+  7. get a clear result and next step
 - Menus should stay numbered and obvious.
-- Before showing the top-level menu, the installer should first perform a basic environment check and decide whether relaunch is needed.
-- This first stage is for understanding the current environment and preparing the next stage, not for rejecting imperfect environments by default.
-- The first stage should print short Chinese-first line-by-line results before entering the top-level menu.
-- The first stage should at minimum identify Windows environment, PowerShell version, process/OS bitness, privilege mode, user-scope write access, and basic network reachability.
-- The first stage should produce a current-run environment profile that later task executors can reuse.
-- The top-level menu is shown after that initial check completes.
+- For Windows, the real main UI should not depend on whichever shell the user happened to use first.
+- Windows Terminal, PowerShell 5.1, PowerShell 7, and other entry shells are just bootstrap hosts.
+- The actual Windows installer UI and all later install interactions should run inside a newly opened dedicated administrator `cmd.exe` window.
+- The default Windows path should not keep the user inside the original entry shell for the real menu and install flow.
+- The bootstrap stage should do only the minimum work needed to hand off into that dedicated Windows main UI window.
+- The top-level menu is shown after that handoff completes.
 - The current v1 top-level menu is:
   - `1` 安装 Claude 和依赖
   - `2` 更新 Claude 和依赖
@@ -114,17 +115,18 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Preferred layers:
   1. remote bootstrap
   2. relaunch controller
-  3. capability detector
+  3. dedicated Windows main UI host
   4. menu orchestrator
   5. task executors
   6. state and logs
 - The remote bootstrap should stay thin.
 - Heavy logic should live in local payloads, not the one-line bootstrap entry.
-- Relaunch only when needed. Do not open a new terminal by default unless a constraint requires it.
-- The startup detection phase should live in the local launcher before the menu, not in the thin bootstrap.
+- For Windows, prefer one stable interaction host: a newly opened dedicated administrator `cmd.exe` window.
+- The entry shell should not be treated as the durable UI host for the real Windows install flow.
+- The bootstrap should perform only the minimum checks needed to open and hand off into that dedicated administrator `cmd.exe` window.
+- Once the dedicated Windows main UI window is open, all later menu interaction, dependency handling, downloads, installs, updates, uninstalls, and validation should stay inside that window.
 - Prefer capability-based detection over edition-based branching.
 - Check real conditions such as admin rights, 64-bit process, PowerShell version, network reachability, filesystem write access, PATH update feasibility, and dependency presence.
-- For the first startup stage, prefer result styles such as ready, auto-adapt, defer, and info instead of treating imperfect environments as default blockers.
 - The menu layer should control flow only, not contain heavy installation logic.
 - Core dependency checkpoints should use a consistent structure: discovery, allowance, action, new-shell validation, component configuration if needed, and final re-validation.
 - Each core dependency checkpoint should finish its own PATH, active-version, scope, and health-state收尾 before the next component begins.
@@ -146,10 +148,8 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Task executors should be idempotent whenever practical.
 
 ## Admin and safety rules
-- Default to non-admin execution.
-- Ask for elevation only when the selected task truly needs it.
-- Do not request admin up front just because a later path might need it.
-- Prefer user-scope installation when it provides a good user experience.
+- For Windows, the agreed default is now to relaunch the real main UI into a dedicated administrator `cmd.exe` window rather than staying in the original non-admin shell.
+- Do not split the user across multiple long-lived interactive shells once the dedicated main UI window is open.
 - If a task changes machine-wide state, that should be obvious to the user.
 - Do not make hidden, surprising, or hard-to-reverse system changes.
 

@@ -47,81 +47,44 @@ The remote bootstrap is the thin entry downloaded by `irm ... | iex`.
 Responsibilities:
 
 - start in the user's current PowerShell session
-- detect environment facts
-- decide whether a controlled relaunch is needed
+- perform only the minimum bootstrap checks
 - download or refresh local payload files
-- start the local launcher
+- relaunch into the dedicated Windows main UI host
 
 The bootstrap should stay small and focused.
+It is not the long-lived UI host.
 
 ### 2. Relaunch controller
 
-The installer should not always open a new terminal window.
+For Windows, the installer should deliberately switch away from the original shell and into one stable interaction host.
 
-Instead, it should relaunch only when needed, for example:
+The agreed Windows-first model is now:
 
-- elevation is required
-- a 64-bit PowerShell process is required
-- the current shell is unsuitable for stable interaction
-- a controlled execution environment is needed
+- user may start from Windows Terminal, Windows PowerShell 5.1, PowerShell 7, or another supported shell
+- the original shell is only the bootstrap host
+- the real installer UI should always relaunch into a newly opened dedicated administrator `cmd.exe` window
 
 Principle:
 
-- relaunch on demand, not by default
+- prefer one stable dedicated main UI host over trying to preserve the original shell
 
-### 3. Capability detector
+### 3. Dedicated Windows main UI host
 
-The installer should prefer capability-based detection over edition-based branching.
+The dedicated Windows main UI host should be an administrator `cmd.exe` window.
 
-Do not primarily branch on labels like:
+Responsibilities:
 
-- Windows 10 vs 11
-- Home vs Pro vs Enterprise
-- LTSC vs non-LTSC
+- own the real numbered menu
+- host all later user interaction
+- run dependency checks and install tasks
+- keep the user in one stable Windows console environment for the rest of the session
 
-Instead, detect real capabilities and constraints:
-
-- admin rights
-- 64-bit OS and 64-bit process
-- PowerShell version
-- Windows build
-- interactive terminal availability
-- network/TLS reachability
-- filesystem write access
-- PATH update feasibility
-- presence of Node.js
-- presence of Git
-- presence of npm
-- presence of Claude CLI
-
-For the first startup stage, prioritize basic environment identification that helps the next stage choose how to proceed.
-Do not treat every imperfect condition as a blocker by default.
-
-Recommended first-stage scope:
-
-- Windows environment
-- PowerShell version and edition
-- 64-bit process and 64-bit OS state
-- privilege mode
-- user-scope write access
-- basic network reachability
-
-Recommended first-stage result model:
-
-- ready
-- auto-adapt
-- defer
-- info
-
-The goal of this stage is to produce a current-run environment profile for later task executors.
-The implementation of this startup detection flow is still being stabilized and should not yet be treated as production-ready.
+This is the MAS-inspired Windows interaction model now chosen for the project.
 
 ### 4. Menu orchestrator
 
 The menu layer should control flow only.
-It is entered after the initial capability detection and any needed relaunch are complete.
-The first startup stage should produce a simple environment profile that later task executors can reuse inside the same run.
-The thin bootstrap should only hand off into this stage rather than own the product-level environment decisions.
+It is entered only after the dedicated administrator `cmd.exe` window is open.
 
 It should:
 
@@ -191,44 +154,35 @@ Suggested contents:
 
 ## Admin strategy
 
-The agreed strategy is:
+The agreed Windows-first strategy is now:
 
-- default to non-admin execution
-- elevate only when a chosen task truly requires it
+- start from any supported shell
+- switch into a dedicated administrator `cmd.exe` window for the real installer UI
+- keep all later interaction and install work inside that window
 
-### Never require admin
+### Bootstrap host expectations
 
-These should stay non-admin whenever possible:
+The original entry shell may be:
 
-- environment detection
-- downloading payload files
-- reading machine information
-- user-scope installation
-- checking Node/Git/npm/Claude presence
-- updating user-level PATH
+- Windows Terminal
+- Windows PowerShell 5.1
+- PowerShell 7
+- other supported Windows shells later
 
-### Admin optional
+The project should not depend on that original shell remaining the durable UI host.
 
-These may optionally use admin depending on the mode:
+### Dedicated main UI expectations
 
-- machine-wide dependency installation
-- system-wide PATH updates
-- all-users installation mode
+The dedicated administrator `cmd.exe` window should be treated as:
 
-### Admin required
-
-These should be treated as elevated operations:
-
-- writing to `HKLM`
-- writing to `Program Files`
-- machine-level environment variable updates
-- machine-wide installers that require elevation
+- the stable interaction host
+- the place where the real menu appears
+- the place where later install/download/validation work runs
 
 User-facing principle:
 
-- do not ask for admin up front
-- ask only when the selected task needs it
-- clearly label menu items with permission expectations when useful
+- do not leave the user split across multiple long-lived interactive shells
+- once the dedicated administrator `cmd.exe` window is open, keep the rest of the Windows flow there
 
 ## Dependency-chain focus
 
@@ -261,11 +215,11 @@ The main Windows dependency chain is expected to include:
 - Claude CLI
 - project default enhancement tools later
 
-This means the most important architecture questions are not edition detection but:
+This means the most important architecture questions are now:
 
-- how to detect missing dependencies
-- how to install them reliably
-- how to recover when one step fails
+- how the bootstrap hands off into the dedicated administrator `cmd.exe` window
+- how the menu and tasks are organized inside that window
+- how dependency checkpoints remain explicit and auditable inside one stable Windows console host
 - how to keep user-mode installation working for most users
 
 ## Placeholder-state rule
