@@ -1,6 +1,6 @@
 # Windows installer architecture notes
 
-This file records the current architecture decisions for the Windows-first installer.
+This file records supporting architecture decisions for the Windows-first installer. The current rebuild source of truth is the newer architecture discussion under `docs/新版架构讨论/`, especially `docs/新版架构讨论/启动阶段（一次性）.md`.
 
 ## Project positioning
 
@@ -29,12 +29,14 @@ Hosting strategy:
 - host static bootstrap and payload files through GitHub Pages
 - keep installer delivery independent from the main tutorial website and its server health
 
-Current GitHub Pages publishing layout:
+Current minimal v1 startup layout:
 
-- `docs/CNAME`
-- `docs/win.ps1`
-- `docs/installer/windows/win.ps1`
-- `docs/installer/windows/menu.txt`
+- `docs/win.ps1` — thin public Windows bootstrap entry
+- `docs/installer/windows/manifest.json` — startup payload manifest
+- `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
+- `docs/installer/windows/payload/tasks/*.cmd` — placeholder task executors for install, update, and uninstall
+- keep `docs/CNAME` for the dedicated install subdomain when GitHub Pages is configured
+- do not reuse the removed old prototype payload layout as the current baseline
 
 ## Layered Windows architecture
 
@@ -133,8 +135,7 @@ Current intended checkpoint order for `安装 Claude 和依赖` is:
 
 `winget` is currently treated as the base installer capability for the whole install path.
 If `winget` is missing or unhealthy, that checkpoint should be resolved before Git or Claude work begins.
-The current minimal real implementation target is `winget checkpoint` + `Git checkpoint`, and the first test stop should be after Git completes.
-That first milestone is now wired into menu option `1`; later checkpoints remain for Claude and the default enhancement layer.
+The current first-stage implementation baseline is the startup handoff path: thin public bootstrap, local workspace, manifest-defined payload retrieval, staging-based payload verification, startup state recording, and administrator `cmd.exe` handoff with `handoffAccepted`. Dependency checkpoints should be rewired only after this startup path stays stable.
 
 ### 6. State and logs
 
@@ -224,13 +225,15 @@ This means the most important architecture questions are now:
 
 ## Placeholder-state rule
 
-For the current stage of the project:
+For the current rebuild stage of the project:
 
-- the Windows launcher remains placeholder-based
-- menu actions should show placeholder text only
-- real installation logic is not yet wired in
+- the previous Windows launcher prototype has been removed
+- the administrator `cmd.exe` payload now has a real numbered menu loop skeleton
+- menu actions are still placeholders and are not currently wired to real install/update/uninstall logic
+- real installation logic is not currently wired
+- the next code milestone should rebuild startup first, before dependency checkpoints
 
-Current placeholder actions are:
+Current planned actions remain:
 
 - install Claude and dependencies
 - update Claude and dependencies
@@ -238,19 +241,20 @@ Current placeholder actions are:
 
 ## Current repository interpretation
 
-At the time of writing:
+At the current rebuild stage:
 
-- `win.ps1` is the local Windows launcher
-- `bootstrap/win.ps1` is the local bootstrap-source version
-- `docs/win.ps1` is the published GitHub Pages bootstrap entry
-- `docs/installer/windows/win.ps1` is the published Windows launcher payload
-- `docs/installer/windows/menu.txt` is the published Windows menu payload
+- the previous local Windows launcher and published prototype payload files have been removed
+- `docs/新版架构讨论/整体架构.md` is the current architecture discussion source
+- `docs/新版架构讨论/启动阶段（一次性）.md` is the current startup-stage implementation source
+- the new `docs/` publishing layout should be defined by the manifest and payload implementation, not by the removed prototype files
 
 ## Next architecture topics
 
 Before implementing real installation logic, the next useful design discussions are:
 
-1. dependency installation priority and fallback strategy
-2. update flow shape and scope
-3. relaunch conditions for controlled PowerShell sessions
-4. recovery and resume behavior after partial failure
+1. bootstrap, manifest, and payload file layout
+2. administrator `cmd.exe` handoff implementation
+3. startup state and log retention policy
+4. dependency installation priority and fallback strategy
+5. update flow shape and scope
+6. recovery and resume behavior after partial failure

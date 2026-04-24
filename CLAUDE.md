@@ -44,6 +44,13 @@ This file provides guidance to Claude Code when working in this repository.
   - simple wording for non-technical users
   - obvious, inspectable script flow
   - strong open-source readability and shareability
+- Windows startup-stage compatibility handling should follow MAS-inspired mechanisms as the default reference model: normalize the host first, converge to the correct process shape, elevate through a controlled handoff, use explicit re-entry markers, and avoid inventing alternate startup mechanisms unless MAS's approach is clearly incompatible with this project's installer purpose.
+- The startup-stage direction is now settled: continue by decomposing MAS's mature mechanisms and mapping them onto this project's `payload + administrator cmd.exe main window` architecture rather than designing a separate startup system.
+- Startup-stage design should now be closed around MAS alignment rather than expanded with new mechanisms: use field ownership matrices, an explicit startup state machine, fixed retry/timeout/budget tables, and a MAS hardening checklist to keep the flow straight-line, deterministic, and auditable.
+- Startup-stage retry and timeout values are v1 initial constants, not open-ended ranges: host normalization 1, bitness convergence 1, PowerShell runtime health retry 0, workspace creation retry 1, manifest download retry 2, payload file download retry 2, payload repair rebuild 1, hash mismatch retry 0, UAC handoff attempt 1, workspace preparation 10s, manifest request timeout 15s, payload file request timeout 30s, `handoffAccepted` wait 30s, and total startup budget 180s. These values may be tuned after large-scale post-launch testing.
+- Keep `handoffAccepted` semantically minimal: it only means the new administrator `cmd.exe` has entered the verified local payload entry and accepted control of the main menu flow.
+- MAS startup hardening for this project should cover environment baseline convergence, PowerShell runtime health gates, terminal compatibility policy, system architecture matrix, and entry landing-shape hardening.
+- MAS is a mechanism and product-flow reference, not a code source. Keep the implementation clean-room and MIT-compatible; do not copy or derive GPL-3.0 MAS code.
 - When choosing between a technically elegant flow and a simpler beginner-friendly flow, prefer the beginner-friendly flow unless the user says otherwise.
 
 ## Primary product goals
@@ -162,6 +169,9 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Do not hardcode secrets, personal paths, or private infrastructure into committed files.
 - MIT licensing should remain compatible with repository structure and published assets.
 
+## Tool usage rules
+- When reading non-PDF files with the Read tool, never pass the pages parameter; pages is only for PDFs, and an empty pages value causes tool errors.
+
 ## Script and implementation style
 - Prefer simple, top-to-bottom, auditable scripts.
 - Do not over-abstract early.
@@ -178,29 +188,25 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Future support for other agents should fit naturally without renaming the repo.
 
 ## Current repository interpretation
-- `win.ps1` — local Windows launcher
-- `bootstrap/win.ps1` — local bootstrap-source version
-- `docs/win.ps1` — published Windows bootstrap entry
-- `docs/installer/windows/win.ps1` — published Windows launcher payload
-- `docs/installer/windows/menu.txt` — published Windows menu payload
-- `unix.sh` — local macOS/Linux launcher
-- `menu.txt` — shared local menu definition
-- `notes/windows-architecture.md` — supporting Windows architecture notes
-- `notes/claude-cli-baseline.md` — tracks the official and confirmed must-install baseline for the Claude CLI path
-- `notes/tool-inventory.md` — tracks the broader tool inventory and the current local installed/not-installed snapshot
+- The previous local shell prototype files have been removed and should not be treated as the current implementation baseline.
+- `docs/新版架构讨论/整体架构.md` — current architecture discussion source for the rebuild.
+- `docs/新版架构讨论/启动阶段（一次性）.md` — current startup-stage implementation source for the Windows rebuild.
+- `docs/MAS分析报告/deep-research-report.md` — MAS analysis source material for clean-room mechanism study.
+- `notes/windows-architecture.md` — supporting Windows architecture notes that must stay aligned with the new startup architecture.
+- `notes/claude-cli-baseline.md` — tracks the official and confirmed must-install baseline for the Claude CLI path.
+- `notes/tool-inventory.md` — tracks the broader tool inventory and the current local installed/not-installed snapshot.
 
 ## Current stage rule
-- This repository is currently a shell prototype.
+- This repository is currently in a Windows startup rebuild stage after the old shell prototype cleanup.
+- The current first-stage implementation baseline is the MAS-inspired `manifest + payload + administrator cmd.exe handoff` startup path described in `docs/新版架构讨论/启动阶段（一次性）.md`.
 - The intended flow includes a real first-stage startup detection pass before entering the menu.
 - That startup detection flow is still being stabilized and should not yet be treated as production-ready.
-- Menu option `1` now implements the first real milestone only:
-  - `winget` checkpoint
-  - Git checkpoint
-- Menu options `2` and `3` are still placeholder-only at this stage.
+- The old menu option `1` winget/Git milestone implementation has been removed with the prototype files and should not be described as currently wired.
+- Menu options `1`, `2`, and `3` currently exist in the administrator `cmd.exe` menu loop and route into split placeholder task executor scripts only; their real install, update, and uninstall actions are not wired yet.
 - Do not describe unfinished flows as production-ready.
-- Before wiring later install logic, keep architecture and user journey decisions aligned with this file.
+- Before wiring later install logic, keep architecture and user journey decisions aligned with this file and `docs/新版架构讨论/`.
 - Do not add extra `settings.json` defaults beyond the currently confirmed items yet.
-- The immediate goal is to get the framework running and publish the first version before expanding the bundle.
+- The immediate goal is to rebuild the startup framework and publish the first working Windows version before expanding the bundle.
 
 ## Claude CLI baseline documentation rule
 - `notes/claude-cli-baseline.md` tracks the confirmed must-install baseline for the Claude CLI path.
@@ -227,6 +233,9 @@ irm https://get.dingjiai.com/win.ps1 | iex
 ## Documentation maintenance rules
 - When the product positioning changes, update this file.
 - Any project fact, rule, decision, constraint, or direction explicitly confirmed by the user should be written into this file if it is durable.
+- For every future architecture, product, workflow, naming, distribution, or implementation-strategy decision, update the relevant project documentation immediately without waiting for the user to remind you.
+- When a discussion is currently being developed in `docs/新版架构讨论/`, write the newly agreed decision into the matching topic document in that directory as part of the same turn or same change.
+- If no matching topic document exists yet under `docs/新版架构讨论/`, create or propose the appropriate document before continuing the design thread.
 - Treat user-confirmed decisions as the source of truth for future maintenance unless the user later changes them.
 - Keep documented project reality aligned with the current agreed reality.
 - If the user confirms something and the docs are now out of sync, update the docs rather than leaving the mismatch for later.
@@ -235,7 +244,7 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - When the broader helper-tool list or the current local tool status snapshot changes, update `notes/tool-inventory.md`.
 - For tracked helper tools, record the exact package identity in `notes/tool-inventory.md` and do not substitute similarly named packages without explicit user confirmation.
 - Once a default tool is selected for a capability, remove unchosen alternatives from `notes/tool-inventory.md` instead of keeping them as pending reminders.
-- If `README.md`, notes, and implementation drift apart, this file should be used to reconcile direction.
+- If `README.md`, notes, architecture discussion documents, and implementation drift apart, this file should be used to reconcile direction.
 
 ## Decision filter for future changes
 Before making a structural change, ask whether it:

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "channel": "v1-startup",
+  "payloadVersion": "0.1.0-startup.1",
+  "basePath": "payload",
+  "mainEntry": "main.cmd",
+  "handoffMode": "admin-cmd",
+  "files": [
+    {
+      "path": "main.cmd",
+      "sha256": "0d046d6f1898b84ff78a789f4e3179f939ff0435c2c5f5ebeb8f6fb044753543",
+      "required": true
+    },
+    {
+      "path": "tasks/install.cmd",
+      "sha256": "e22f13a02149cb2b1902d938ebe52aa71560294e4df177a644915a94fb1bf3f9",
+      "required": true
+    },
+    {
+      "path": "tasks/update.cmd",
+      "sha256": "f8b0593bbbc798a5673394b60e1e43968b3e0be54fb559630b5429518e966aa5",
+      "required": true
+    },
+    {
+      "path": "tasks/uninstall.cmd",
+      "sha256": "af191c9bd15f1b583aa6fc6b489a27b1d596699281bb14bfba5017337bece227",
+      "required": true
+    }
+  ]
+}
