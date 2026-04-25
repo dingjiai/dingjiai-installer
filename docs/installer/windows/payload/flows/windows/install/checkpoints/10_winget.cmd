@@ -2,8 +2,11 @@
 chcp 65001 >NUL
 setlocal EnableExtensions
 
-echo [winget checkpoint]
-echo 未来用于发现、修复或安装 winget 基础能力。
-echo 当前 checkpoint 尚未接入真实逻辑。
-echo.
-exit /b 0
+set "WINGET_HELPER=%~dp0..\..\..\..\lib\windows\winget.ps1"
+if not exist "%WINGET_HELPER%" (
+  echo winget checkpoint helper missing.
+  exit /b 20
+)
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%WINGET_HELPER%" -FlowName "install" -CheckpointName "winget" %*
+exit /b %errorlevel%

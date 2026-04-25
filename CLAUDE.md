@@ -153,6 +153,7 @@ irm https://get.dingjiai.com/win.ps1 | iex
   - Claude product configuration
   - final end-to-end validation
 - Core install actions should currently prefer one `winget`-based path for Git, Claude, and the default enhancement tools unless the user later confirms a different unique solution.
+- The current `winget` checkpoint sample may output `healthy`, `missing`, `command_broken`, or `source_broken`, with decisions such as `skip`, `install`, or `repair`, but those decisions are report-only until the user explicitly approves real action wiring. Probe commands must be bounded by timeout, read stdout/stderr asynchronously to avoid pipe-buffer deadlocks, report timeout state, confirm the official `winget` source URL `https://cdn.winget.microsoft.com/cache` when source listing succeeds, and keep the current exit code contract: decision reports return `0`; helper/runtime failures return `70`. The helper supports deterministic `-TestScenario` cases for bad-path testing, including untrusted-source simulation, `-OutputMode Json` for machine-readable checkpoint results, and optional `-ResultPath` JSON result files; these modes are test/report contracts, not real system mutation. The install checkpoint CMD bridge forwards helper arguments so these contracts can be tested through the same bridge used by the flow.
 - Git should currently use the project placeholder trust fields in `notes/claude-cli-baseline.md` until evidence-backed values replace them.
 - Git discovery should currently keep all planned fields as required inputs before any simplification.
 - Git install and upgrade actions should currently assume one best-practice path through `winget` package `Git.Git`.
@@ -202,7 +203,8 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - `notes/claude-cli-baseline.md` — tracks the official and confirmed must-install baseline for the Claude CLI path.
 - `notes/tool-inventory.md` — tracks the broader tool inventory and the current local installed/not-installed snapshot.
 - `docs/` is the GitHub Pages publishing root for runnable installer assets; do not place architecture Markdown there.
-- Windows menu business skeletons live under `docs/installer/windows/payload/flows/windows/`, with shared placeholders under `docs/installer/windows/payload/lib/windows/`.
+- Windows menu business skeletons live under `docs/installer/windows/payload/flows/windows/`, with shared helpers under `docs/installer/windows/payload/lib/windows/`.
+- The first `winget` checkpoint sample lives at `docs/installer/windows/payload/flows/windows/install/checkpoints/10_winget.cmd` and delegates to `docs/installer/windows/payload/lib/windows/winget.ps1`.
 
 ## Current stage rule
 - This repository is currently in a Windows startup rebuild stage after the old shell prototype cleanup.
@@ -210,8 +212,9 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - The intended flow includes a real first-stage startup detection pass before entering the menu.
 - That startup detection flow is still being stabilized and should not yet be treated as production-ready.
 - The old menu option `1` winget/Git milestone implementation has been removed with the prototype files and should not be described as currently wired.
-- Menu options `1`, `2`, and `3` currently exist in the administrator `cmd.exe` menu loop and route into split Windows flow entries under `payload/flows/windows/`; those entries call checkpoint placeholders only, and their real install, update, and uninstall actions are not wired yet.
-- Do not describe unfinished flows as production-ready.
+- Menu options `1`, `2`, and `3` currently exist in the administrator `cmd.exe` menu loop and route into split Windows flow entries under `payload/flows/windows/`.
+- The install flow's `winget` checkpoint is currently the first read-only business sample: it performs discovery, diagnosis, and decision output only, and it must not install, repair, reconfigure PATH, edit registry, or mutate machine state yet. It now exposes deterministic fake scenarios including untrusted-source simulation, JSON output, optional result-file output, and bridge-level argument forwarding so healthy and broken paths can be validated without depending on the current machine state.
+- Other Git, Claude, enhancement, update, and uninstall checkpoint actions remain placeholders; do not describe unfinished flows as production-ready.
 - Before wiring later install logic, keep architecture and user journey decisions aligned with this file and `notes/architecture/`.
 - Do not add extra `settings.json` defaults beyond the currently confirmed items yet.
 - The immediate goal is to rebuild the startup framework and publish the first working Windows version before expanding the bundle.

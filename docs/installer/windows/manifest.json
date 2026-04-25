@@ -13,7 +13,7 @@
     },
     {
       "path": "flows/windows/install/checkpoints/10_winget.cmd",
-      "sha256": "bda975fc9ae4b5d43c36107cb271d94182cc99576340889b6cc46fb83daf9157",
+      "sha256": "c0175d590780024b16e1a34813666c7429fd5354f16db3442cc4362f42f9d7c4",
       "required": true
     },
     {
@@ -134,6 +134,11 @@
     {
       "path": "lib/windows/ui_bridge.cmd",
       "sha256": "c3ad4c8feaedae0eb214428f94f2376ab3dc2274e0532d644c2556b13faf5e87",
+      "required": true
+    },
+    {
+      "path": "lib/windows/winget.ps1",
+      "sha256": "996810c48d6ef8972a7b330fa6f1742b482355c1278cd9aa47fd6f2415b67fe5",
       "required": true
     },
     {

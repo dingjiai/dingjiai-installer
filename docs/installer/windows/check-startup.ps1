@@ -166,6 +166,7 @@ $requiredPayloadPaths = @(
     'lib/windows/detect.cmd',
     'lib/windows/paths.cmd',
     'lib/windows/exec.cmd',
+    'lib/windows/winget.ps1',
     'tasks/install.cmd',
     'tasks/update.cmd',
     'tasks/uninstall.cmd'
@@ -213,6 +214,64 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
             Need ($flowText.Contains('checkpoints\')) "flow entry calls checkpoints: $flowEntry"
             Need ($flowText.Contains('exit /b 0')) "flow entry returns success from placeholder path: $flowEntry"
         }
+    }
+
+
+
+    $wingetCheckpointPath = Join-Path $payloadRoot 'flows/windows/install/checkpoints/10_winget.cmd'
+    Need (Test-Path -LiteralPath $wingetCheckpointPath -PathType Leaf) 'winget checkpoint cmd exists'
+    if (Test-Path -LiteralPath $wingetCheckpointPath -PathType Leaf) {
+        $wingetCheckpoint = Get-Content -LiteralPath $wingetCheckpointPath -Raw
+        Need ($wingetCheckpoint.Contains('lib\windows\winget.ps1')) 'winget checkpoint delegates to winget.ps1 helper'
+        Need ($wingetCheckpoint.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'winget checkpoint uses PowerShell helper bridge'
+        Need ($wingetCheckpoint.Contains('%*')) 'winget checkpoint forwards helper arguments for contract tests'
+    }
+
+    $wingetHelperPath = Join-Path $payloadRoot 'lib/windows/winget.ps1'
+    Need (Test-Path -LiteralPath $wingetHelperPath -PathType Leaf) 'winget.ps1 helper exists'
+    Need (Test-Utf8Bom -Path $wingetHelperPath) 'winget.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $wingetHelperPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $wingetHelperPath
+        $wingetHelper = Get-Content -LiteralPath $wingetHelperPath -Raw
+        Need ($wingetHelper.Contains('function Get-WingetDiscovery')) 'winget.ps1 has discovery stage'
+        Need ($wingetHelper.Contains('function Get-RealWingetDiscovery')) 'winget.ps1 keeps real discovery separate from test scenarios'
+        Need ($wingetHelper.Contains('function Get-TestWingetDiscovery')) 'winget.ps1 has deterministic test discovery scenarios'
+        Need ($wingetHelper.Contains('function Get-WingetDecision')) 'winget.ps1 has decision stage'
+        Need ($wingetHelper.Contains('function New-WingetResult')) 'winget.ps1 builds a structured result object'
+        Need ($wingetHelper.Contains('function New-HelperFailureResult')) 'winget.ps1 builds structured helper failure results'
+        Need ($wingetHelper.Contains('function ConvertTo-ProcessArgument')) 'winget.ps1 quotes probe arguments'
+        Need ($wingetHelper.Contains('WaitForExit($TimeoutSeconds * 1000)')) 'winget.ps1 bounds probe runtime with timeout'
+        Need ($wingetHelper.Contains('BeginOutputReadLine')) 'winget.ps1 reads stdout asynchronously to avoid pipe buffer deadlocks'
+        Need ($wingetHelper.Contains('BeginErrorReadLine')) 'winget.ps1 reads stderr asynchronously to avoid pipe buffer deadlocks'
+        Need ($wingetHelper.Contains('Register-ObjectEvent')) 'winget.ps1 captures async probe output in Windows PowerShell 5.1'
+        Need ($wingetHelper.Contains('-TimedOut $true')) 'winget.ps1 reports probe timeout state'
+        Need ($wingetHelper.Contains('function Test-WingetSourceOutput')) 'winget.ps1 validates winget source output'
+        Need ($wingetHelper.Contains('https://cdn\.winget\.microsoft\.com/cache')) 'winget.ps1 requires the official winget source URL'
+        Need ($wingetHelper.Contains('sourceHasWinget')) 'winget.ps1 reports official winget source presence'
+        Need ($wingetHelper.Contains('HelperFailureExitCode = 70')) 'winget.ps1 separates helper failure exit code'
+        Need ($wingetHelper.Contains('exitCodeContract')) 'winget.ps1 reports exit code contract'
+        Need ($wingetHelper.Contains('Get-Command winget.exe')) 'winget.ps1 discovers active winget command'
+        Need ($wingetHelper.Contains("'--version'")) 'winget.ps1 probes winget version'
+        Need ($wingetHelper.Contains("'source', 'list'")) 'winget.ps1 probes winget sources'
+        Need ($wingetHelper.Contains('mutationAllowed')) 'winget.ps1 reports mutation boundary'
+        Need ($wingetHelper.Contains('actionMode')) 'winget.ps1 reports action boundary'
+        Need ($wingetHelper.Contains('AllowedStatuses')) 'winget.ps1 locks status enum contract'
+        Need ($wingetHelper.Contains('AllowedDecisions')) 'winget.ps1 locks decision enum contract'
+        Need ($wingetHelper.Contains('DecisionReportExitCode = 0')) 'winget.ps1 locks decision report exit code'
+        Need ($wingetHelper.Contains('function Test-ResultContract')) 'winget.ps1 validates result contract before output'
+        Need ($wingetHelper.Contains('ResultPath')) 'winget.ps1 supports optional result file output'
+        Need ($wingetHelper.Contains('function Write-WingetResultFile')) 'winget.ps1 writes optional json result file'
+        Need ($wingetHelper.Contains('winget result file write failed')) 'winget.ps1 reports result file write failures explicitly'
+        Need ($wingetHelper.Contains('SkipResultFile')) 'winget.ps1 avoids repeated result file failure during fallback output'
+        Need ($wingetHelper.Contains('discovery-diagnose-decision-only')) 'winget.ps1 stays in sample discovery mode'
+        Need ($wingetHelper.Contains("ValidateSet('Text', 'Json')")) 'winget.ps1 declares text and json output modes'
+        Need ($wingetHelper.Contains('ConvertTo-Json -Depth 6')) 'winget.ps1 emits structured json output'
+        Need ($wingetHelper.Contains('function ConvertTo-JsonText')) 'winget.ps1 emits ASCII-safe json for pipeline parsing'
+        Need ($wingetHelper.Contains('TestScenario')) 'winget.ps1 exposes deterministic test scenarios'
+        Need ($wingetHelper.Contains('helper_failed')) 'winget.ps1 can simulate helper failure contract'
+        Need ($wingetHelper.Contains('version_timeout')) 'winget.ps1 can simulate version timeout'
+        Need ($wingetHelper.Contains('source_missing')) 'winget.ps1 can simulate missing official winget source'
+        Need ($wingetHelper.Contains('source_untrusted')) 'winget.ps1 can simulate untrusted winget source URL'
     }
 
     $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1

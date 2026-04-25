@@ -35,8 +35,10 @@ Current minimal v1 startup and placeholder business layout:
 - `docs/installer/windows/manifest.json` — startup payload manifest
 - `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
 - `docs/installer/windows/payload/flows/windows/*/entry.cmd` — placeholder flow entries for install, update, and uninstall
-- `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — placeholder checkpoint slots for component work
+- `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — checkpoint slots for component work; most are still placeholders
+- `docs/installer/windows/payload/flows/windows/install/checkpoints/10_winget.cmd` — first read-only `winget` checkpoint sample
 - `docs/installer/windows/payload/lib/windows/*.cmd` — thin shared helper placeholders
+- `docs/installer/windows/payload/lib/windows/winget.ps1` — first PowerShell business helper for `winget` discovery, diagnosis, and decision output
 - `docs/installer/windows/payload/tasks/*.cmd` — compatibility shims that forward to flow entries
 - keep `docs/CNAME` for the dedicated install subdomain when GitHub Pages is configured
 - keep design Markdown under `notes/`; `docs/` should stay a publishing root for runnable assets
@@ -139,7 +141,8 @@ Current intended checkpoint order for `安装 Claude 和依赖` is:
 
 `winget` is currently treated as the base installer capability for the whole install path.
 If `winget` is missing or unhealthy, that checkpoint should be resolved before Git or Claude work begins.
-The current first-stage implementation baseline is the startup handoff path: thin public bootstrap, local workspace, manifest-defined payload retrieval, staging-based payload verification, startup state recording, and administrator `cmd.exe` handoff with `handoffAccepted`. Dependency checkpoints should be rewired only after this startup path stays stable.
+The first `winget` implementation is intentionally a read-only sample: `10_winget.cmd` only bridges into `lib/windows/winget.ps1`, and the helper only performs discovery, diagnosis, and decision output. It does not install, repair, reconfigure PATH, edit registry, or mutate machine state yet. Its probe commands are timeout-bounded, stdout/stderr are read asynchronously to avoid pipe-buffer deadlocks, probe timeout state is reported, and `winget source list` must confirm the official `winget` source URL `https://cdn.winget.microsoft.com/cache` before the checkpoint is considered healthy. The current exit code contract is: decision reports return `0`; helper/runtime failures return `70`. The helper also exposes deterministic `-TestScenario` inputs including untrusted-source simulation, `-OutputMode Json`, and optional `-ResultPath` JSON result files so future checkpoint runner/state code can consume a stable result shape while bad paths remain testable without changing the machine. The CMD checkpoint bridge forwards helper arguments, so these contracts can be tested through the same bridge used by the install flow.
+The current first-stage implementation baseline is the startup handoff path: thin public bootstrap, local workspace, manifest-defined payload retrieval, staging-based payload verification, startup state recording, and administrator `cmd.exe` handoff with `handoffAccepted`. Dependency checkpoint actions should be wired only after their sample contracts stay stable.
 
 ### 6. State and logs
 
@@ -206,6 +209,7 @@ Keeping an older or alternate version is acceptable only if it does not remain t
 
 For current framework work:
 
+- The current `winget` sample reports status and decision only; action decisions such as `install` or `repair` are not executed yet. Its status and decision enums are locked in the helper and validated before output.
 - `winget` repair should first try the shortest source recovery path and escalate to reinstall if the checkpoint is still unhealthy.
 - `winget` install and reinstall should share one App Installer payload path once that payload is connected.
 - current App Installer payload metadata is intentionally minimal and should only track package name, identity, and version.
@@ -233,8 +237,9 @@ For the current rebuild stage of the project:
 
 - the previous Windows launcher prototype has been removed
 - the administrator `cmd.exe` payload now has a real numbered menu loop skeleton
-- menu actions now route to placeholder flow entries, but are not currently wired to real install/update/uninstall logic
-- real installation logic is not currently wired
+- menu actions now route to flow entries; most checkpoints are placeholders
+- the install flow has a read-only `winget` checkpoint sample for discovery, diagnosis, and decision output
+- real install/update/uninstall mutation logic is not currently wired
 - the next code milestone should rebuild startup first, before dependency checkpoints
 
 Current planned actions remain:
