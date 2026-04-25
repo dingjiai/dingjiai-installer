@@ -8,7 +8,12 @@
   "files": [
     {
       "path": "main.cmd",
-      "sha256": "ce241dea6f1a6ff455024b7049f60759ea372ce0adf19fdc1d1cb1c1ea5cd496",
+      "sha256": "41d69b5e22a5e88e8b63f459a308cde2bc3d1ee502f63001a7925bc9d9345531",
+      "required": true
+    },
+    {
+      "path": "ui.ps1",
+      "sha256": "9e0b858d2a9b3f27dfa064b026b89f6defa640870f8d1b6b67b5dc7df3f4f161",
       "required": true
     },
     {

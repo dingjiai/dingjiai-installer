@@ -831,7 +831,7 @@ function Start-AdminCmdHandoff {
         '--handoff-mode'
         'admin-cmd'
     ) -join ' '
-    $cmdArguments = '/k "{0}"' -f $handoffCommand
+    $cmdArguments = '/c "{0}"' -f $handoffCommand
 
     $maxAttempts = $script:UacHandoffAttemptCount
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {

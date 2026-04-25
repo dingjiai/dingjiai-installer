@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $script:Failed = $false
 
@@ -54,6 +54,18 @@ function Test-RelativePayloadPath {
 
     $parts = $Path -split '[\\/]+'
     return -not ($parts -contains '..')
+}
+
+
+function Test-Utf8Bom {
+    param([string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    return ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
 }
 
 function Get-Sha256Hex {
@@ -139,6 +151,16 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need ($mainCmd -match '--main-entry-path') 'main.cmd accepts main entry path'
     Need ($mainCmd -match '--source') 'main.cmd accepts source'
     Need ($mainCmd -match '--handoff-mode') 'main.cmd accepts handoff mode'
+    Need ($mainCmd -match 'ui\.ps1') 'main.cmd delegates UI rendering to ui.ps1'
+    Need ($mainCmd -match '(?m)^if errorlevel 4 exit\s*$') 'main.cmd exits administrator window from menu 0'
+    Need ($mainCmd -match '(?m)^chcp 65001 >nul\s*$') 'main.cmd switches UI rendering to UTF-8 code page'
+
+    $uiPath = Join-Path $payloadRoot 'ui.ps1'
+    Need (Test-Path -LiteralPath $uiPath -PathType Leaf) 'ui.ps1 exists'
+    Need (Test-Utf8Bom -Path $uiPath) 'ui.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $uiPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $uiPath
+    }
 
     $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1
     Need (-not [string]::IsNullOrWhiteSpace($embeddedLine)) 'main.cmd has embedded PowerShell state writer'
@@ -155,6 +177,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
 }
 
 if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
+    Need (Test-Utf8Bom -Path $winEntryPath) 'win.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
     Test-PowerShellFileSyntax -Path $winEntryPath
 
     $winEntry = Get-Content -LiteralPath $winEntryPath -Raw
@@ -167,6 +190,7 @@ if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
     Need ($winEntry -match "Add-StartupCheck -Name 'windows_build'") 'win.ps1 checks Windows build'
     Need ($winEntry -match "Add-StartupCheck -Name 'powershell_version'") 'win.ps1 checks PowerShell version'
     Need ($winEntry -match '\$missingCapabilities') 'win.ps1 checks runtime capabilities'
+    Need ($winEntry -match '\$cmdArguments\s*=\s*''/c') 'win.ps1 launches administrator cmd with /c'
 }
 
 if ($script:Failed) {

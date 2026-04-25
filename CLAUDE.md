@@ -97,6 +97,7 @@ irm https://get.dingjiai.com/win.ps1 | iex
   6. choose a task
   7. get a clear result and next step
 - Menus should stay numbered and obvious.
+- The administrator `cmd.exe` main UI should use a MAS-inspired fixed-size, centered panel style: stable title, clear separators, simple numbered choices, and constrained keyboard input.
 - For Windows, the real main UI should not depend on whichever shell the user happened to use first.
 - Windows Terminal, PowerShell 5.1, PowerShell 7, and other entry shells are just bootstrap hosts.
 - The actual Windows installer UI and all later install interactions should run inside a newly opened dedicated administrator `cmd.exe` window.

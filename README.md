@@ -107,6 +107,7 @@ Current minimal v1 startup layout:
 - `docs/installer/windows/check-startup.ps1` — local Windows startup manifest and payload self-check
 - `docs/installer/windows/manifest.json` — startup payload manifest
 - `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
+- `docs/installer/windows/payload/ui.ps1` — centered Chinese panel renderer for the administrator CMD UI
 - `docs/installer/windows/payload/tasks/*.cmd` — placeholder task executors for install, update, and uninstall
 
 This layout is intentionally minimal and only covers the startup handoff skeleton. The old prototype payload file layout has been removed.
@@ -131,7 +132,7 @@ Implemented in the current startup skeleton:
 - staging-based payload hash verification before promotion
 - local startup state file
 - administrator `cmd.exe` handoff attempt and 30s `handoffAccepted` wait
-- administrator `cmd.exe` numbered menu loop skeleton
+- administrator `cmd.exe` numbered menu loop skeleton with a fixed-size centered panel UI
 - split placeholder task executor scripts for install, update, and uninstall
 - startup state JSON checks and startup JSONL log output
 - Windows build 17763+ and PowerShell 5.1+ startup hard gates
