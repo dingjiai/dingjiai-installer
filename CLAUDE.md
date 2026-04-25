@@ -185,6 +185,7 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Keep shared definitions simple when they help multiple entry points.
 - Prefer stable behavior over clever shortcuts.
 - When the repo is still in prototype mode, preserve honest placeholders rather than fake implementation.
+- Build this project incrementally, but each completed layer or module must be hardened before moving on. Do not rely on later rewrites to fix known weakness in already-written framework code.
 
 ## Naming rules
 - The primary project identity should stay general-purpose.

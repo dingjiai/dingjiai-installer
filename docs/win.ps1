@@ -144,6 +144,7 @@ function Get-StartupFailureSuggestion {
         'manifest_handoff_unsupported' { return '请更新到最新启动器文件后重试。' }
         'payload_hash_mismatch' { return '请重新运行启动命令；如果你在本地调试，请同步 manifest 中的 SHA-256 后运行自检。' }
         'handoff_start_failed' { return '请确认你允许了 UAC 管理员权限弹窗，然后重新运行启动命令。' }
+        'handoff_denied_or_failed' { return '请确认你允许了 UAC 管理员权限弹窗；如果没有看到弹窗，请检查安全软件或从 Windows 自带 PowerShell 重新运行启动命令。' }
         'handoff_accept_timeout' { return '请查看是否有管理员权限弹窗被隐藏；如果已弹出 CMD，请确认窗口没有被安全软件拦截。' }
         'startup_budget_exceeded' { return '请稍后重试；如果多次发生，请把日志路径发给维护者排查。' }
         default { return '请重新运行启动命令；如果仍失败，请把日志路径发给维护者排查。' }
@@ -174,6 +175,60 @@ function Write-StartupFailureMessage {
     }
 }
 
+function Get-NormalizedPath {
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    } catch {
+        return $null
+    }
+}
+
+function Test-SamePath {
+    param(
+        [string] $Left,
+        [string] $Right
+    )
+
+    $leftPath = Get-NormalizedPath -Path $Left
+    $rightPath = Get-NormalizedPath -Path $Right
+    if ($null -eq $leftPath -or $null -eq $rightPath) {
+        return $false
+    }
+
+    return $leftPath.Equals($rightPath, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-HandoffAcceptedState {
+    param(
+        $State,
+        [string] $ExpectedMainEntryPath = $null
+    )
+
+    if ($null -eq $State) { return $false }
+    if ($State.startupId -ne $script:StartupId) { return $false }
+    if ($State.stage -ne $script:StartupStages.Completed) { return $false }
+    if ($State.handoffAccepted -ne $true) { return $false }
+
+    $mainEntryPath = if ([string]::IsNullOrWhiteSpace($ExpectedMainEntryPath)) { $State.mainEntryPath } else { $ExpectedMainEntryPath }
+    if ([string]::IsNullOrWhiteSpace($mainEntryPath)) { return $false }
+
+    if (-not (Test-SamePath -Left $State.acceptedWorkspaceRoot -Right $script:WorkspaceRoot)) { return $false }
+    if (-not (Test-SamePath -Left $State.acceptedStatePath -Right $script:StatePath)) { return $false }
+    if (-not (Test-SamePath -Left $State.acceptedLogPath -Right $script:LogPath)) { return $false }
+    if (-not (Test-SamePath -Left $State.acceptedPayloadRoot -Right $script:PayloadRoot)) { return $false }
+    if (-not (Test-SamePath -Left $State.acceptedMainEntryPath -Right $mainEntryPath)) { return $false }
+    if ($State.acceptedSource -ne $script:BootstrapSource) { return $false }
+    if ($State.acceptedHandoffMode -ne 'admin-cmd') { return $false }
+
+    return $true
+}
+
 function Stop-Startup {
     param(
         [string] $Reason,
@@ -183,9 +238,9 @@ function Stop-Startup {
     try {
         if (Test-Path -LiteralPath $script:StatePath) {
             $state = Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json
-            if ($state.startupId -eq $script:StartupId -and $state.stage -eq $script:StartupStages.Completed -and $state.handoffAccepted -eq $true) {
+            if (Test-HandoffAcceptedState -State $state) {
                 $script:HandoffAccepted = $true
-                Add-StartupCheck -Name 'failed_state_skipped' -Status 'skipped' -Detail @{ reason = 'handoff_already_accepted'; statePath = $script:StatePath }
+                Add-StartupCheck -Name 'failed_state_skipped' -Status 'skipped' -Detail @{ reason = 'handoff_already_accepted'; statePath = $script:StatePath; acceptedWorkspaceRoot = $state.acceptedWorkspaceRoot; acceptedPayloadRoot = $state.acceptedPayloadRoot; acceptedMainEntryPath = $state.acceptedMainEntryPath; acceptedHandoffMode = $state.acceptedHandoffMode }
                 Write-Host '管理员 CMD 主窗口已接管。'
                 exit 0
             }
@@ -254,7 +309,7 @@ function Write-StartupState {
     }
 
     if ($null -ne $existingState) {
-        foreach ($key in @('handoffAccepted', 'handoffAcceptedAt', 'acceptedWorkspaceRoot', 'acceptedStatePath', 'acceptedLogPath', 'acceptedPayloadRoot', 'acceptedMainEntryPath', 'acceptedHandoffMode')) {
+        foreach ($key in @('handoffAccepted', 'handoffAcceptedAt', 'acceptedWorkspaceRoot', 'acceptedStatePath', 'acceptedLogPath', 'acceptedPayloadRoot', 'acceptedMainEntryPath', 'acceptedSource', 'acceptedHandoffMode')) {
             $property = $existingState.PSObject.Properties[$key]
             if ($null -ne $property) {
                 $state[$key] = $property.Value
@@ -859,9 +914,9 @@ function Start-AdminCmdHandoff {
         Start-Sleep -Milliseconds $script:HandoffAcceptedPollMilliseconds
         try {
             $state = Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json
-            if ($state.startupId -eq $script:StartupId -and $state.stage -eq $script:StartupStages.Completed -and $state.handoffAccepted -eq $true) {
+            if (Test-HandoffAcceptedState -State $state -ExpectedMainEntryPath $MainEntryPath) {
                 $script:HandoffAccepted = $true
-                Add-StartupCheck -Name 'handoff_accepted' -Status 'passed' -Detail @{ statePath = $script:StatePath; waitSeconds = $script:HandoffAcceptedWaitSeconds; pollMilliseconds = $script:HandoffAcceptedPollMilliseconds }
+                Add-StartupCheck -Name 'handoff_accepted' -Status 'passed' -Detail @{ statePath = $script:StatePath; waitSeconds = $script:HandoffAcceptedWaitSeconds; pollMilliseconds = $script:HandoffAcceptedPollMilliseconds; acceptedWorkspaceRoot = $state.acceptedWorkspaceRoot; acceptedPayloadRoot = $state.acceptedPayloadRoot; acceptedMainEntryPath = $state.acceptedMainEntryPath; acceptedSource = $state.acceptedSource; acceptedHandoffMode = $state.acceptedHandoffMode }
                 Write-Host '管理员 CMD 主窗口已接管。'
                 return
             }
