@@ -2,14 +2,18 @@
 
 $script:BootstrapVersion = '0.1.0-startup.1'
 $script:StartedAt = (Get-Date).ToString('o')
-$script:StartupId = [guid]::NewGuid().ToString('N')
+$existingStartupId = [Environment]::GetEnvironmentVariable('DINGJIAI_STARTUP_ID', 'Process')
+$script:StartupId = if ([string]::IsNullOrWhiteSpace($existingStartupId)) { [guid]::NewGuid().ToString('N') } else { $existingStartupId }
 $script:IsRemoteRun = [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)
+$script:BootstrapSource = if ($script:IsRemoteRun) { 'remote-win-ps1' } else { 'local-win-ps1' }
 $script:BootstrapRoot = if ($script:IsRemoteRun) { $null } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $script:LocalPayloadSourceRoot = if ($script:BootstrapRoot) { Join-Path $script:BootstrapRoot 'installer\windows' } else { $null }
 $script:BaseUrl = 'https://get.dingjiai.com/installer/windows'
 $script:WorkspaceRoot = Join-Path $env:LOCALAPPDATA 'dingjiai-installer'
 $script:PayloadRoot = Join-Path $script:WorkspaceRoot 'payload'
 $script:StagingRoot = Join-Path $script:WorkspaceRoot 'staging'
+$script:CacheRoot = Join-Path $script:WorkspaceRoot 'cache'
+$script:TempRoot = Join-Path $script:WorkspaceRoot 'temp'
 $script:StateRoot = Join-Path $script:WorkspaceRoot 'state'
 $script:LogRoot = Join-Path $script:WorkspaceRoot 'logs'
 $script:ManifestPath = Join-Path $script:WorkspaceRoot 'manifest.json'
@@ -21,6 +25,7 @@ $script:PayloadFileRequestTimeoutSeconds = 30
 $script:ManifestDownloadRetryCount = 2
 $script:PayloadFileDownloadRetryCount = 2
 $script:WorkspaceCreationRetryCount = 1
+$script:WorkspacePreparationTimeoutSeconds = 10
 $script:TotalStartupBudgetSeconds = 180
 $script:PowerShellRuntimeHealthRetryCount = 0
 $script:UacHandoffAttemptCount = 1
@@ -31,14 +36,24 @@ $script:PayloadRepairRebuildRetryCount = 1
 $script:BitnessConvergenceRetryCount = 1
 $script:HostNormalizationRetryCount = 1
 $script:StartupStages = [ordered]@{
-    Failed = 'failed'
-    Relaunching64Bit = 'relaunching_64_bit'
-    WorkspaceReady = 'workspace_ready'
-    PayloadSyncing = 'payload_syncing'
-    PayloadReady = 'payload_ready'
-    HandoffAttempted = 'handoff_attempted'
+    HostNormalize = 'host-normalize'
+    PlatformGate = 'platform-gate'
+    Workspace = 'workspace'
+    Payload = 'payload'
+    Handoff = 'handoff'
     Completed = 'completed'
+    Failed = 'failed'
 }
+$script:CurrentStage = $null
+$script:HostNormalizeAttempted = ([Environment]::GetEnvironmentVariable('DINGJIAI_HOST_NORMALIZE_ATTEMPTED', 'Process') -eq '1')
+$script:BitnessNormalizeAttempted = ([Environment]::GetEnvironmentVariable('DINGJIAI_BITNESS_NORMALIZE_ATTEMPTED', 'Process') -eq '1')
+$script:HandoffAttempted = $false
+$script:HandoffAccepted = $false
+$script:LastFailureStage = $null
+$script:LastFailureReason = $null
+$script:LastFailureMessage = $null
+$script:MinimumPowerShellVersion = [version]'5.1'
+$script:MinimumWindowsBuild = 17763
 
 function Add-StartupCheck {
     param(
@@ -80,19 +95,118 @@ function Assert-StartupBudget {
     }
 }
 
+function Write-AtomicTextFile {
+    param(
+        [string] $Path,
+        [string] $Value
+    )
+
+    $directory = [System.IO.Path]::GetDirectoryName($Path)
+    $fileName = [System.IO.Path]::GetFileName($Path)
+    $tempPath = [System.IO.Path]::Combine($directory, ('{0}.{1}.tmp' -f $fileName, [guid]::NewGuid().ToString('N')))
+    $backupPath = [System.IO.Path]::Combine($directory, ('{0}.{1}.bak' -f $fileName, [guid]::NewGuid().ToString('N')))
+
+    try {
+        Set-Content -LiteralPath $tempPath -Value $Value -Encoding UTF8
+        if ([System.IO.File]::Exists($Path)) {
+            [System.IO.File]::Replace($tempPath, $Path, $backupPath)
+        } else {
+            [System.IO.File]::Move($tempPath, $Path)
+        }
+    } finally {
+        if ([System.IO.File]::Exists($tempPath)) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+        if ([System.IO.File]::Exists($backupPath)) {
+            Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Get-StartupFailureSuggestion {
+    param([string] $Reason)
+
+    switch ($Reason) {
+        'not_windows' { return '请在 Windows 10 1809 或更新版本的电脑上重新运行启动命令。' }
+        'windows_build_unsupported' { return '请升级到 Windows 10 1809 / Windows Server 2019 或更新版本后重试。' }
+        'not_64_bit_os' { return '请换用 64 位 Windows 电脑后重试。' }
+        'cannot_converge_64_bit' { return '请使用 Windows 自带 PowerShell，或从 64 位 PowerShell 窗口重新运行启动命令。' }
+        'cannot_converge_64_bit_after_retry' { return '请关闭当前窗口，打开 Windows 自带 64 位 PowerShell 后重新运行启动命令。' }
+        'cmd_missing' { return '请检查系统 cmd.exe 是否存在，或换用正常的 Windows 系统环境后重试。' }
+        'powershell_version_unsupported' { return '请使用 Windows 10 1809+ 自带的 PowerShell 5.1，或使用 PowerShell 7 后重试。' }
+        'powershell_language_mode_unsupported' { return '请换用正常的 PowerShell/CMD 窗口；如果这是公司电脑或受管设备，请检查脚本语言模式策略限制。' }
+        'powershell_runtime_unhealthy' { return '请换用 Windows 自带 PowerShell 5.1 或 PowerShell 7 后重试。' }
+        'powershell_runtime_capability_missing' { return '请换用完整的 Windows PowerShell 环境后重试。' }
+        'workspace_preparation_timeout' { return '请稍后重试；如果仍失败，请检查本机磁盘、杀毒软件或 AppData 写入权限。' }
+        'workspace_create_failed' { return '请确认当前用户可以写入 AppData，本地安全软件没有拦截文件创建。' }
+        'manifest_invalid_json' { return '请稍后重试；如果你在本地调试，请先运行 manifest/payload 自检。' }
+        'manifest_schema_unsupported' { return '请更新到最新启动器文件后重试。' }
+        'manifest_handoff_unsupported' { return '请更新到最新启动器文件后重试。' }
+        'payload_hash_mismatch' { return '请重新运行启动命令；如果你在本地调试，请同步 manifest 中的 SHA-256 后运行自检。' }
+        'handoff_start_failed' { return '请确认你允许了 UAC 管理员权限弹窗，然后重新运行启动命令。' }
+        'handoff_accept_timeout' { return '请查看是否有管理员权限弹窗被隐藏；如果已弹出 CMD，请确认窗口没有被安全软件拦截。' }
+        'startup_budget_exceeded' { return '请稍后重试；如果多次发生，请把日志路径发给维护者排查。' }
+        default { return '请重新运行启动命令；如果仍失败，请把日志路径发给维护者排查。' }
+    }
+}
+
+function Write-StartupFailureMessage {
+    param(
+        [string] $Reason,
+        [string] $Message,
+        [string] $Suggestion
+    )
+
+    Write-Host ''
+    Write-Host 'dingjiai 启动失败'
+    Write-Host ''
+    Write-Host '原因：'
+    Write-Host $Message
+    Write-Host ''
+    Write-Host '建议：'
+    Write-Host $Suggestion
+    Write-Host ''
+    Write-Host '日志：'
+    if (Test-Path -LiteralPath $script:LogRoot -PathType Container) {
+        Write-Host $script:LogPath
+    } else {
+        Write-Host '启动失败发生在本地工作区日志目录创建之前，尚未生成日志文件。'
+    }
+}
+
 function Stop-Startup {
     param(
         [string] $Reason,
         [string] $Message
     )
 
+    try {
+        if (Test-Path -LiteralPath $script:StatePath) {
+            $state = Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json
+            if ($state.startupId -eq $script:StartupId -and $state.stage -eq $script:StartupStages.Completed -and $state.handoffAccepted -eq $true) {
+                $script:HandoffAccepted = $true
+                Add-StartupCheck -Name 'failed_state_skipped' -Status 'skipped' -Detail @{ reason = 'handoff_already_accepted'; statePath = $script:StatePath }
+                Write-Host '管理员 CMD 主窗口已接管。'
+                exit 0
+            }
+        }
+    } catch {
+    }
+
+    $script:LastFailureStage = if ($script:CurrentStage) { $script:CurrentStage } else { $script:StartupStages.Failed }
+    $script:LastFailureReason = $Reason
+    $script:LastFailureMessage = $Message
+    $suggestion = Get-StartupFailureSuggestion -Reason $Reason
+
     Write-StartupState -Stage $script:StartupStages.Failed -Extra @{
         failureReason = $Reason
         failureMessage = $Message
+        failureSuggestion = $suggestion
+        failureLogPath = $script:LogPath
         failedAt = (Get-Date).ToString('o')
     }
 
-    Write-Host "启动失败：$Message"
+    Write-StartupFailureMessage -Reason $Reason -Message $Message -Suggestion $suggestion
     exit 1
 }
 
@@ -102,7 +216,19 @@ function Write-StartupState {
         [hashtable] $Extra = @{}
     )
 
+    $script:CurrentStage = $Stage
     New-Item -ItemType Directory -Force -Path $script:StateRoot, $script:LogRoot | Out-Null
+
+    $existingState = $null
+    if (Test-Path -LiteralPath $script:StatePath) {
+        try {
+            $candidateState = Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json
+            if ($candidateState.startupId -eq $script:StartupId) {
+                $existingState = $candidateState
+            }
+        } catch {
+        }
+    }
 
     $state = [ordered]@{
         startupId = $script:StartupId
@@ -113,16 +239,35 @@ function Write-StartupState {
         workspaceRoot = $script:WorkspaceRoot
         payloadRoot = $script:PayloadRoot
         stagingRoot = $script:StagingRoot
+        cacheRoot = $script:CacheRoot
+        tempRoot = $script:TempRoot
         manifestPath = $script:ManifestPath
-        handoffAccepted = $false
+        source = $script:BootstrapSource
+        hostNormalizeAttempted = $script:HostNormalizeAttempted
+        bitnessNormalizeAttempted = $script:BitnessNormalizeAttempted
+        handoffAttempted = $script:HandoffAttempted
+        handoffAccepted = $script:HandoffAccepted
+        lastFailureStage = $script:LastFailureStage
+        lastFailureReason = $script:LastFailureReason
+        lastFailureMessage = $script:LastFailureMessage
         checks = $script:StartupChecks
+    }
+
+    if ($null -ne $existingState) {
+        foreach ($key in @('handoffAccepted', 'handoffAcceptedAt', 'acceptedWorkspaceRoot', 'acceptedStatePath', 'acceptedLogPath', 'acceptedPayloadRoot', 'acceptedMainEntryPath', 'acceptedHandoffMode')) {
+            $property = $existingState.PSObject.Properties[$key]
+            if ($null -ne $property) {
+                $state[$key] = $property.Value
+            }
+        }
     }
 
     foreach ($key in $Extra.Keys) {
         $state[$key] = $Extra[$key]
     }
 
-    $state | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $script:StatePath -Encoding UTF8
+    $stateJson = $state | ConvertTo-Json -Depth 8
+    Write-AtomicTextFile -Path $script:StatePath -Value $stateJson
 
     $logEntry = [ordered]@{
         startupId = $script:StartupId
@@ -135,18 +280,65 @@ function Write-StartupState {
 }
 
 function Test-HostNormalization {
+    $script:HostNormalizeAttempted = $true
+    Write-StartupState -Stage $script:StartupStages.HostNormalize
+
     $attempt = 1
     $maxAttempts = $script:HostNormalizationRetryCount
     $processPath = (Get-Process -Id $PID).Path
+    $hostName = $Host.Name
+    $hostVersion = $Host.Version.ToString()
+    $languageMode = $ExecutionContext.SessionState.LanguageMode.ToString()
+    $requiresBitnessConvergence = [Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess
+    $hostPolicy = 'accepted_bootstrap_host'
+    $normalizationAction = if ($requiresBitnessConvergence) { 'defer_to_bitness_convergence' } else { 'continue' }
+
+    if ($languageMode -ne 'FullLanguage') {
+        Add-StartupCheck -Name 'host_normalization' -Status 'failed' -Detail @{
+            policy = 'unsupported_language_mode'
+            attempt = $attempt
+            maxAttempts = $maxAttempts
+            source = $script:BootstrapSource
+            isRemoteRun = $script:IsRemoteRun
+            bootstrapRoot = $script:BootstrapRoot
+            shellId = $ShellId
+            hostName = $hostName
+            hostVersion = $hostVersion
+            psVersion = $PSVersionTable.PSVersion.ToString()
+            edition = $PSVersionTable.PSEdition
+            languageMode = $languageMode
+            processPath = $processPath
+            entryRole = 'bootstrap-only'
+            mainUiHost = 'admin-cmd'
+            hostNormalizeAttempted = $script:HostNormalizeAttempted
+            bitnessNormalizeAttempted = $script:BitnessNormalizeAttempted
+        }
+        Stop-Startup -Reason 'powershell_language_mode_unsupported' -Message '当前 PowerShell 语言模式不支持启动器运行。'
+    }
+
     Add-StartupCheck -Name 'host_normalization' -Status 'passed' -Detail @{
+        policy = $hostPolicy
+        action = $normalizationAction
         attempt = $attempt
         maxAttempts = $maxAttempts
+        source = $script:BootstrapSource
         isRemoteRun = $script:IsRemoteRun
         bootstrapRoot = $script:BootstrapRoot
         shellId = $ShellId
+        hostName = $hostName
+        hostVersion = $hostVersion
         psVersion = $PSVersionTable.PSVersion.ToString()
         edition = $PSVersionTable.PSEdition
+        languageMode = $languageMode
         processPath = $processPath
+        entryRole = 'bootstrap-only'
+        acceptedEntryHosts = @('Windows PowerShell', 'PowerShell')
+        mainUiHost = 'admin-cmd'
+        hostNormalizeAttempted = $script:HostNormalizeAttempted
+        bitnessNormalizeAttempted = $script:BitnessNormalizeAttempted
+        is64BitOperatingSystem = [Environment]::Is64BitOperatingSystem
+        is64BitProcess = [Environment]::Is64BitProcess
+        requiresBitnessConvergence = $requiresBitnessConvergence
     }
 }
 
@@ -203,6 +395,21 @@ function Test-WindowsHost {
 
     Add-StartupCheck -Name 'windows_host' -Status 'passed' -Detail @{ os = $env:OS }
 
+    $buildNumber = [Environment]::OSVersion.Version.Build
+    if ($buildNumber -lt $script:MinimumWindowsBuild) {
+        Add-StartupCheck -Name 'windows_build' -Status 'failed' -Detail @{
+            buildNumber = $buildNumber
+            minimumBuild = $script:MinimumWindowsBuild
+            osVersion = [Environment]::OSVersion.Version.ToString()
+        }
+        Stop-Startup -Reason 'windows_build_unsupported' -Message '当前 Windows 版本低于启动器最低要求。'
+    }
+    Add-StartupCheck -Name 'windows_build' -Status 'passed' -Detail @{
+        buildNumber = $buildNumber
+        minimumBuild = $script:MinimumWindowsBuild
+        osVersion = [Environment]::OSVersion.Version.ToString()
+    }
+
     if (-not [Environment]::Is64BitOperatingSystem) {
         Add-StartupCheck -Name 'os_bitness' -Status 'failed' -Detail @{ is64BitOperatingSystem = [Environment]::Is64BitOperatingSystem }
         Stop-Startup -Reason 'not_64_bit_os' -Message '当前启动器需要 64 位 Windows。'
@@ -217,12 +424,19 @@ function Test-WindowsHost {
             Stop-Startup -Reason 'cannot_converge_64_bit' -Message '无法切换到 64 位 PowerShell。'
         }
 
+        if ($script:BitnessNormalizeAttempted) {
+            Add-StartupCheck -Name 'process_bitness' -Status 'failed' -Detail @{ is64BitProcess = [Environment]::Is64BitProcess; sysnativePowerShell = $sysnativePowerShell; reason = 'bitness_normalize_already_attempted' }
+            Stop-Startup -Reason 'cannot_converge_64_bit_after_retry' -Message '无法从 32 位 PowerShell 收敛到 64 位 PowerShell。'
+        }
+
+        $script:BitnessNormalizeAttempted = $true
         $bitnessAttempt = 1
         $bitnessMaxAttempts = $script:BitnessConvergenceRetryCount
-        Add-StartupCheck -Name 'process_bitness' -Status 'relaunching' -Detail @{ is64BitProcess = [Environment]::Is64BitProcess; sysnativePowerShell = $sysnativePowerShell; attempt = $bitnessAttempt; maxAttempts = $bitnessMaxAttempts }
-        Write-StartupState -Stage $script:StartupStages.Relaunching64Bit -Extra @{
+        Add-StartupCheck -Name 'process_bitness' -Status 'relaunching' -Detail @{ is64BitProcess = [Environment]::Is64BitProcess; sysnativePowerShell = $sysnativePowerShell; source = $script:BootstrapSource; entryRole = 'bootstrap-only'; normalizationMarker = 'DINGJIAI_BITNESS_NORMALIZE_ATTEMPTED'; attempt = $bitnessAttempt; maxAttempts = $bitnessMaxAttempts }
+        Write-StartupState -Stage $script:StartupStages.HostNormalize -Extra @{
             bitnessAttempt = $bitnessAttempt
             bitnessMaxAttempts = $bitnessMaxAttempts
+            bitnessNormalizationAction = 'relaunch_sysnative_powershell'
         }
 
         $source = if ($script:IsRemoteRun) {
@@ -231,7 +445,8 @@ function Test-WindowsHost {
             "& '$($MyInvocation.MyCommand.Path)'"
         }
 
-        $process = Start-Process -FilePath $sysnativePowerShell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $source) -Wait -PassThru
+        $reentryCommand = "`$env:DINGJIAI_STARTUP_ID = '$($script:StartupId)'; `$env:DINGJIAI_HOST_NORMALIZE_ATTEMPTED = '1'; `$env:DINGJIAI_BITNESS_NORMALIZE_ATTEMPTED = '1'; $source"
+        $process = Start-Process -FilePath $sysnativePowerShell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $reentryCommand) -Wait -PassThru
         exit $process.ExitCode
     }
 
@@ -253,8 +468,24 @@ function Test-PowerShellRuntimeHealth {
         'Start-Process',
         'New-Item',
         'Set-Content',
-        'Get-Content'
+        'Get-Content',
+        'Add-Content'
     )
+
+    $psVersion = $PSVersionTable.PSVersion
+    if ($psVersion -lt $script:MinimumPowerShellVersion) {
+        Add-StartupCheck -Name 'powershell_version' -Status 'failed' -Detail @{
+            psVersion = $psVersion.ToString()
+            minimumVersion = $script:MinimumPowerShellVersion.ToString()
+            edition = $PSVersionTable.PSEdition
+        }
+        Stop-Startup -Reason 'powershell_version_unsupported' -Message '当前 PowerShell 版本低于启动器最低要求。'
+    }
+    Add-StartupCheck -Name 'powershell_version' -Status 'passed' -Detail @{
+        psVersion = $psVersion.ToString()
+        minimumVersion = $script:MinimumPowerShellVersion.ToString()
+        edition = $PSVersionTable.PSEdition
+    }
 
     for ($attempt = 1; $attempt -le ($script:PowerShellRuntimeHealthRetryCount + 1); $attempt++) {
         $missingCommands = @()
@@ -264,13 +495,21 @@ function Test-PowerShellRuntimeHealth {
             }
         }
 
-        if ($missingCommands.Count -eq 0) {
+        $missingCapabilities = @()
+        try { $null = @{} | ConvertTo-Json -Depth 1 } catch { $missingCapabilities += 'ConvertTo-Json execution' }
+        try { $null = '{"ok":true}' | ConvertFrom-Json } catch { $missingCapabilities += 'ConvertFrom-Json execution' }
+        try { $null = [System.Security.Cryptography.SHA256]::Create() } catch { $missingCapabilities += 'SHA256 .NET API' }
+        try { $null = [System.IO.File].GetMethod('Replace', [type[]] @([string], [string], [string])) } catch { $missingCapabilities += 'System.IO.File.Replace' }
+        try { $null = [Diagnostics.ProcessStartInfo].GetProperty('Verb') } catch { $missingCapabilities += 'Start-Process Verb support' }
+
+        if ($missingCommands.Count -eq 0 -and $missingCapabilities.Count -eq 0) {
             Add-StartupCheck -Name 'powershell_runtime' -Status 'passed' -Detail @{
                 psVersion = $PSVersionTable.PSVersion.ToString()
                 edition = $PSVersionTable.PSEdition
                 attempt = $attempt
                 maxAttempts = ($script:PowerShellRuntimeHealthRetryCount + 1)
                 requiredCommands = $requiredCommands
+                checkedCapabilities = @('json_execution', 'sha256_dotnet_api', 'file_replace_api', 'start_process_verb')
             }
             return
         }
@@ -281,6 +520,7 @@ function Test-PowerShellRuntimeHealth {
             attempt = $attempt
             maxAttempts = ($script:PowerShellRuntimeHealthRetryCount + 1)
             missingCommands = $missingCommands
+            missingCapabilities = $missingCapabilities
         }
 
         if ($attempt -gt $script:PowerShellRuntimeHealthRetryCount) {
@@ -290,26 +530,55 @@ function Test-PowerShellRuntimeHealth {
 }
 
 function Initialize-Workspace {
+    $workspaceStartedAt = Get-Date
     for ($attempt = 1; $attempt -le ($script:WorkspaceCreationRetryCount + 1); $attempt++) {
         try {
-            New-Item -ItemType Directory -Force -Path $script:WorkspaceRoot, $script:PayloadRoot, $script:StagingRoot, $script:StateRoot, $script:LogRoot | Out-Null
+            New-Item -ItemType Directory -Force -Path $script:WorkspaceRoot, $script:PayloadRoot, $script:StagingRoot, $script:CacheRoot, $script:TempRoot, $script:StateRoot, $script:LogRoot | Out-Null
+            $elapsedSeconds = ((Get-Date) - $workspaceStartedAt).TotalSeconds
+            if ($elapsedSeconds -gt $script:WorkspacePreparationTimeoutSeconds) {
+                Add-StartupCheck -Name 'workspace_preparation_budget' -Status 'failed' -Detail @{
+                    workspaceRoot = $script:WorkspaceRoot
+                    elapsedSeconds = [math]::Round($elapsedSeconds, 3)
+                    budgetSeconds = $script:WorkspacePreparationTimeoutSeconds
+                    attempt = $attempt
+                    maxAttempts = ($script:WorkspaceCreationRetryCount + 1)
+                }
+                Stop-Startup -Reason 'workspace_preparation_timeout' -Message '本地工作区准备超过 10 秒预算。'
+            }
             Add-StartupCheck -Name 'workspace_ready' -Status 'passed' -Detail @{
                 workspaceRoot = $script:WorkspaceRoot
                 payloadRoot = $script:PayloadRoot
                 stagingRoot = $script:StagingRoot
+                cacheRoot = $script:CacheRoot
+                tempRoot = $script:TempRoot
                 stateRoot = $script:StateRoot
                 logRoot = $script:LogRoot
+                elapsedSeconds = [math]::Round($elapsedSeconds, 3)
+                budgetSeconds = $script:WorkspacePreparationTimeoutSeconds
                 attempt = $attempt
                 maxAttempts = ($script:WorkspaceCreationRetryCount + 1)
             }
-            Write-StartupState -Stage $script:StartupStages.WorkspaceReady
+            Write-StartupState -Stage $script:StartupStages.Workspace
             return
         } catch {
+            $elapsedSeconds = ((Get-Date) - $workspaceStartedAt).TotalSeconds
             Add-StartupCheck -Name 'workspace_ready' -Status 'failed_attempt' -Detail @{
                 workspaceRoot = $script:WorkspaceRoot
+                elapsedSeconds = [math]::Round($elapsedSeconds, 3)
+                budgetSeconds = $script:WorkspacePreparationTimeoutSeconds
                 attempt = $attempt
                 maxAttempts = ($script:WorkspaceCreationRetryCount + 1)
                 error = $_.Exception.Message
+            }
+            if ($elapsedSeconds -gt $script:WorkspacePreparationTimeoutSeconds) {
+                Add-StartupCheck -Name 'workspace_preparation_budget' -Status 'failed' -Detail @{
+                    workspaceRoot = $script:WorkspaceRoot
+                    elapsedSeconds = [math]::Round($elapsedSeconds, 3)
+                    budgetSeconds = $script:WorkspacePreparationTimeoutSeconds
+                    attempt = $attempt
+                    maxAttempts = ($script:WorkspaceCreationRetryCount + 1)
+                }
+                Stop-Startup -Reason 'workspace_preparation_timeout' -Message '本地工作区准备超过 10 秒预算。'
             }
             if ($attempt -gt $script:WorkspaceCreationRetryCount) {
                 Stop-Startup -Reason 'workspace_create_failed' -Message '无法创建本地工作区。'
@@ -426,7 +695,7 @@ function Sync-Payload {
 
     Assert-ManifestShape -Manifest $Manifest
     Assert-SafeRelativePath -Path $Manifest.basePath
-    Write-StartupState -Stage $script:StartupStages.PayloadSyncing -Extra @{ payloadVersion = $Manifest.payloadVersion }
+    Write-StartupState -Stage $script:StartupStages.Payload -Extra @{ payloadVersion = $Manifest.payloadVersion }
 
     $verifiedFiles = @{}
     $stagingPayloadRoot = Join-Path $script:StagingRoot ("payload-$($script:StartupId)")
@@ -497,7 +766,7 @@ function Sync-Payload {
     Add-StartupCheck -Name 'payload_promoted' -Status 'passed' -Detail @{ payloadRoot = $script:PayloadRoot; stagingPayloadRoot = $stagingPayloadRoot }
 
     $mainEntryPath = Join-Path $script:PayloadRoot $Manifest.mainEntry
-    Write-StartupState -Stage $script:StartupStages.PayloadReady -Extra @{
+    Write-StartupState -Stage $script:StartupStages.Payload -Extra @{
         payloadVersion = $Manifest.payloadVersion
         mainEntryPath = $mainEntryPath
     }
@@ -536,18 +805,38 @@ function Test-EntryLandingShape {
 function Start-AdminCmdHandoff {
     param([string] $MainEntryPath)
 
-    Write-StartupState -Stage $script:StartupStages.HandoffAttempted -Extra @{
+    $script:HandoffAttempted = $true
+    Write-StartupState -Stage $script:StartupStages.Handoff -Extra @{
         mainEntryPath = $MainEntryPath
         handoffAttemptedAt = (Get-Date).ToString('o')
     }
 
     $cmdPath = Join-Path $env:WINDIR 'System32\cmd.exe'
-    $cmdArguments = "/k `"`"$MainEntryPath`" --startup-id `"$script:StartupId`" --state `"$script:StatePath`" --payload-root `"$script:PayloadRoot`" --handoff-mode admin-cmd`""
+    $handoffCommand = @(
+        '"{0}"' -f $MainEntryPath
+        '--startup-id'
+        '"{0}"' -f $script:StartupId
+        '--workspace-root'
+        '"{0}"' -f $script:WorkspaceRoot
+        '--state'
+        '"{0}"' -f $script:StatePath
+        '--log-path'
+        '"{0}"' -f $script:LogPath
+        '--payload-root'
+        '"{0}"' -f $script:PayloadRoot
+        '--main-entry-path'
+        '"{0}"' -f $MainEntryPath
+        '--source'
+        '"{0}"' -f $script:BootstrapSource
+        '--handoff-mode'
+        'admin-cmd'
+    ) -join ' '
+    $cmdArguments = '/k "{0}"' -f $handoffCommand
 
     $maxAttempts = $script:UacHandoffAttemptCount
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        Add-StartupCheck -Name 'admin_cmd_handoff' -Status 'attempted' -Detail @{ cmdPath = $cmdPath; mainEntryPath = $MainEntryPath; attempt = $attempt; maxAttempts = $maxAttempts }
-        Write-StartupState -Stage $script:StartupStages.HandoffAttempted -Extra @{
+        Add-StartupCheck -Name 'admin_cmd_handoff' -Status 'attempted' -Detail @{ cmdPath = $cmdPath; workspaceRoot = $script:WorkspaceRoot; statePath = $script:StatePath; logPath = $script:LogPath; payloadRoot = $script:PayloadRoot; mainEntryPath = $MainEntryPath; source = $script:BootstrapSource; attempt = $attempt; maxAttempts = $maxAttempts }
+        Write-StartupState -Stage $script:StartupStages.Handoff -Extra @{
             mainEntryPath = $MainEntryPath
             handoffAttemptedAt = (Get-Date).ToString('o')
             handoffAttempt = $attempt
@@ -570,14 +859,9 @@ function Start-AdminCmdHandoff {
         Start-Sleep -Milliseconds $script:HandoffAcceptedPollMilliseconds
         try {
             $state = Get-Content -LiteralPath $script:StatePath -Raw | ConvertFrom-Json
-            if ($state.startupId -eq $script:StartupId -and $state.handoffAccepted -eq $true) {
+            if ($state.startupId -eq $script:StartupId -and $state.stage -eq $script:StartupStages.Completed -and $state.handoffAccepted -eq $true) {
+                $script:HandoffAccepted = $true
                 Add-StartupCheck -Name 'handoff_accepted' -Status 'passed' -Detail @{ statePath = $script:StatePath; waitSeconds = $script:HandoffAcceptedWaitSeconds; pollMilliseconds = $script:HandoffAcceptedPollMilliseconds }
-                Write-StartupState -Stage $script:StartupStages.Completed -Extra @{
-                    mainEntryPath = $MainEntryPath
-                    handoffAccepted = $true
-                    handoffAcceptedAt = $state.handoffAcceptedAt
-                    acceptedPayloadRoot = $state.acceptedPayloadRoot
-                }
                 Write-Host '管理员 CMD 主窗口已接管。'
                 return
             }
@@ -596,6 +880,7 @@ Test-TerminalCompatibility
 Assert-StartupBudget -Checkpoint 'before_system_architecture_matrix'
 Test-SystemArchitectureMatrix
 Assert-StartupBudget -Checkpoint 'before_host_checks'
+Write-StartupState -Stage $script:StartupStages.PlatformGate
 Test-WindowsHost
 Assert-StartupBudget -Checkpoint 'before_powershell_runtime'
 Test-PowerShellRuntimeHealth

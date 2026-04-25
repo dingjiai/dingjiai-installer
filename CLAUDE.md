@@ -7,6 +7,8 @@ This file provides guidance to Claude Code when working in this repository.
 - This file is the authoritative project guide for this repo.
 - If a durable product, architecture, naming, or distribution decision changes, update this file in the same change.
 - `README.md` is for end users. `notes/*.md` are supporting design notes. This file records durable working rules.
+- When doing any work in this repository, follow this `CLAUDE.md` as a mandatory operating contract.
+- If this document conflicts with a user request, observed project state, or other guidance, stop and ask the user before acting.
 
 ## Project positioning
 - This repository is an open-source, beginner-friendly installer and launcher.
@@ -50,6 +52,8 @@ This file provides guidance to Claude Code when working in this repository.
 - Startup-stage retry and timeout values are v1 initial constants, not open-ended ranges: host normalization 1, bitness convergence 1, PowerShell runtime health retry 0, workspace creation retry 1, manifest download retry 2, payload file download retry 2, payload repair rebuild 1, hash mismatch retry 0, UAC handoff attempt 1, workspace preparation 10s, manifest request timeout 15s, payload file request timeout 30s, `handoffAccepted` wait 30s, and total startup budget 180s. These values may be tuned after large-scale post-launch testing.
 - Keep `handoffAccepted` semantically minimal: it only means the new administrator `cmd.exe` has entered the verified local payload entry and accepted control of the main menu flow.
 - MAS startup hardening for this project should cover environment baseline convergence, PowerShell runtime health gates, terminal compatibility policy, system architecture matrix, and entry landing-shape hardening.
+- Windows startup hard gates currently require Windows build 17763+ and PowerShell 5.1+ before workspace, manifest, payload, or handoff work continues.
+- Startup failures should use the unified user-facing failure shape: reason, suggested next action, and local log path when available.
 - MAS is a mechanism and product-flow reference, not a code source. Keep the implementation clean-room and MIT-compatible; do not copy or derive GPL-3.0 MAS code.
 - When choosing between a technically elegant flow and a simpler beginner-friendly flow, prefer the beginner-friendly flow unless the user says otherwise.
 
@@ -207,6 +211,7 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Before wiring later install logic, keep architecture and user journey decisions aligned with this file and `docs/新版架构讨论/`.
 - Do not add extra `settings.json` defaults beyond the currently confirmed items yet.
 - The immediate goal is to rebuild the startup framework and publish the first working Windows version before expanding the bundle.
+- Run `docs/installer/windows/check-startup.ps1` after changing Windows startup payload files, `manifest.json`, runtime gates, or failure-output contracts to catch hash drift and startup contract regressions.
 
 ## Claude CLI baseline documentation rule
 - `notes/claude-cli-baseline.md` tracks the confirmed must-install baseline for the Claude CLI path.

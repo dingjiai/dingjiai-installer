@@ -104,6 +104,7 @@ get.dingjiai.com
 Current minimal v1 startup layout:
 
 - `docs/win.ps1` — thin public Windows bootstrap entry
+- `docs/installer/windows/check-startup.ps1` — local Windows startup manifest and payload self-check
 - `docs/installer/windows/manifest.json` — startup payload manifest
 - `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
 - `docs/installer/windows/payload/tasks/*.cmd` — placeholder task executors for install, update, and uninstall
@@ -133,6 +134,8 @@ Implemented in the current startup skeleton:
 - administrator `cmd.exe` numbered menu loop skeleton
 - split placeholder task executor scripts for install, update, and uninstall
 - startup state JSON checks and startup JSONL log output
+- Windows build 17763+ and PowerShell 5.1+ startup hard gates
+- unified startup failure output with reason, suggestion, and log path
 
 Not implemented yet after the prototype cleanup:
 
