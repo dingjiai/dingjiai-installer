@@ -157,6 +157,8 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - Git should currently use the project placeholder trust fields in `notes/claude-cli-baseline.md` until evidence-backed values replace them.
 - Git discovery should currently keep all planned fields as required inputs before any simplification.
 - Git install and upgrade actions should currently assume one best-practice path through `winget` package `Git.Git`.
+- The current Git checkpoint sample may output `healthy`, `missing`, `command_broken`, `version_too_old`, or `identity_untrusted`, with decisions such as `skip`, `install`, `repair`, `upgrade`, or `reinstall`, but those decisions are report-only until the user explicitly approves real action wiring. It uses the placeholder trust fields in `notes/claude-cli-baseline.md`, timeout-bounded `git --version` probing, async stdout/stderr reads, deterministic `-TestScenario` cases, `-OutputMode Json`, optional `-ResultPath`, and the same exit code contract shape as `winget`: decision reports return `0`; helper/runtime failures return `70`.
+- The current download helper sample is download-only staging, not install action wiring. By default it reports a `planned` download decision and writes no files; real download requires explicit `-AllowDownload`, an HTTPS URL, an allowed host list, and a locked expected SHA-256. It may only download under `%LOCALAPPDATA%\dingjiai-installer\downloads\staging` via a `.part` file, verify the hash, and promote the verified artifact; hash mismatches must delete the partial file or report cleanup failure, and optional result files must stay under `%LOCALAPPDATA%\dingjiai-installer`. Retry and timeout parameters are bounded (`RetryCount` 0-5, `TimeoutSeconds` 5-120) to avoid unbounded waits. It must not execute installers, unpack into system locations, edit PATH, edit registry, or write user configuration. Its current exit code contract is: planned/downloaded success returns `0`; download boundary failures return `60`; helper/runtime failures return `70`.
 - Concrete work should be split into task-like executors such as doctor, dependency installs, repair, and uninstall.
 - Task executors should be idempotent whenever practical.
 
@@ -205,6 +207,8 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - `docs/` is the GitHub Pages publishing root for runnable installer assets; do not place architecture Markdown there.
 - Windows menu business skeletons live under `docs/installer/windows/payload/flows/windows/`, with shared helpers under `docs/installer/windows/payload/lib/windows/`.
 - The first `winget` checkpoint sample lives at `docs/installer/windows/payload/flows/windows/install/checkpoints/10_winget.cmd` and delegates to `docs/installer/windows/payload/lib/windows/winget.ps1`.
+- The first Git checkpoint sample lives at `docs/installer/windows/payload/flows/windows/install/checkpoints/20_git.cmd` and delegates to `docs/installer/windows/payload/lib/windows/git.ps1`.
+- The first download-only staging sample lives at `docs/installer/windows/payload/flows/windows/install/checkpoints/15_app_installer_download.cmd` and delegates to `docs/installer/windows/payload/lib/windows/download.ps1`; it defaults to planned/no-download mode.
 
 ## Current stage rule
 - This repository is currently in a Windows startup rebuild stage after the old shell prototype cleanup.
@@ -214,7 +218,9 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - The old menu option `1` winget/Git milestone implementation has been removed with the prototype files and should not be described as currently wired.
 - Menu options `1`, `2`, and `3` currently exist in the administrator `cmd.exe` menu loop and route into split Windows flow entries under `payload/flows/windows/`.
 - The install flow's `winget` checkpoint is currently the first read-only business sample: it performs discovery, diagnosis, and decision output only, and it must not install, repair, reconfigure PATH, edit registry, or mutate machine state yet. It now exposes deterministic fake scenarios including untrusted-source simulation, JSON output, optional result-file output, and bridge-level argument forwarding so healthy and broken paths can be validated without depending on the current machine state.
-- Other Git, Claude, enhancement, update, and uninstall checkpoint actions remain placeholders; do not describe unfinished flows as production-ready.
+- The install flow's Git checkpoint is currently the second read-only business sample: `20_git.cmd` delegates to `lib/windows/git.ps1`, reports discovery, placeholder identity diagnosis, and decisions only, and must not install, repair, upgrade, reinstall, edit PATH, registry, or user configuration yet.
+- The install flow's App Installer download checkpoint is currently a download-only staging sample: `15_app_installer_download.cmd` delegates to `lib/windows/download.ps1`, defaults to planned/no-download output, confines downloads/results to the project user-local root, bounds retry/timeout inputs, cleans or invalidates hash-mismatched partial files, and must not install, execute, unpack to system locations, edit PATH, edit registry, or write user configuration.
+- Claude, enhancement, update, and uninstall checkpoint actions remain placeholders; do not describe unfinished flows as production-ready.
 - Before wiring later install logic, keep architecture and user journey decisions aligned with this file and `notes/architecture/`.
 - Do not add extra `settings.json` defaults beyond the currently confirmed items yet.
 - The immediate goal is to rebuild the startup framework and publish the first working Windows version before expanding the bundle.

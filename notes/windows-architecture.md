@@ -37,8 +37,12 @@ Current minimal v1 startup and placeholder business layout:
 - `docs/installer/windows/payload/flows/windows/*/entry.cmd` — placeholder flow entries for install, update, and uninstall
 - `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — checkpoint slots for component work; most are still placeholders
 - `docs/installer/windows/payload/flows/windows/install/checkpoints/10_winget.cmd` — first read-only `winget` checkpoint sample
+- `docs/installer/windows/payload/flows/windows/install/checkpoints/15_app_installer_download.cmd` — first download-only App Installer staging sample
+- `docs/installer/windows/payload/flows/windows/install/checkpoints/20_git.cmd` — first read-only Git checkpoint sample
 - `docs/installer/windows/payload/lib/windows/*.cmd` — thin shared helper placeholders
 - `docs/installer/windows/payload/lib/windows/winget.ps1` — first PowerShell business helper for `winget` discovery, diagnosis, and decision output
+- `docs/installer/windows/payload/lib/windows/download.ps1` — PowerShell helper for download-only staging with explicit source and hash gates
+- `docs/installer/windows/payload/lib/windows/git.ps1` — PowerShell business helper for Git discovery, placeholder trust diagnosis, and decision output
 - `docs/installer/windows/payload/tasks/*.cmd` — compatibility shims that forward to flow entries
 - keep `docs/CNAME` for the dedicated install subdomain when GitHub Pages is configured
 - keep design Markdown under `notes/`; `docs/` should stay a publishing root for runnable assets
@@ -133,15 +137,18 @@ A component is not complete until its own PATH, active version, scope, and healt
 Current intended checkpoint order for `安装 Claude 和依赖` is:
 
 1. `winget` checkpoint
-2. Git checkpoint
-3. Claude checkpoint
-4. default enhancement layer checkpoints
-5. Claude product configuration
-6. final end-to-end validation
+2. App Installer download-only staging checkpoint for the future `winget` install/reinstall path
+3. Git checkpoint
+4. Claude checkpoint
+5. default enhancement layer checkpoints
+6. Claude product configuration
+7. final end-to-end validation
 
 `winget` is currently treated as the base installer capability for the whole install path.
 If `winget` is missing or unhealthy, that checkpoint should be resolved before Git or Claude work begins.
 The first `winget` implementation is intentionally a read-only sample: `10_winget.cmd` only bridges into `lib/windows/winget.ps1`, and the helper only performs discovery, diagnosis, and decision output. It does not install, repair, reconfigure PATH, edit registry, or mutate machine state yet. Its probe commands are timeout-bounded, stdout/stderr are read asynchronously to avoid pipe-buffer deadlocks, probe timeout state is reported, and `winget source list` must confirm the official `winget` source URL `https://cdn.winget.microsoft.com/cache` before the checkpoint is considered healthy. The current exit code contract is: decision reports return `0`; helper/runtime failures return `70`. The helper also exposes deterministic `-TestScenario` inputs including untrusted-source simulation, `-OutputMode Json`, and optional `-ResultPath` JSON result files so future checkpoint runner/state code can consume a stable result shape while bad paths remain testable without changing the machine. The CMD checkpoint bridge forwards helper arguments, so these contracts can be tested through the same bridge used by the install flow.
+The first Git implementation is also intentionally a read-only sample: `20_git.cmd` only bridges into `lib/windows/git.ps1`, and the helper only performs discovery, placeholder trust diagnosis, and decision output. It does not install, repair, upgrade, reinstall, reconfigure PATH, edit registry, or mutate machine state yet. Current Git trust checks use the placeholder fields in `notes/claude-cli-baseline.md`: minimum version `2.40.0`, Git for Windows version marker `windows.`, trusted active path shapes, and package identity `Git.Git`. Its probe commands are timeout-bounded, stdout/stderr are read asynchronously, timeout state is reported, deterministic `-TestScenario` inputs cover healthy and broken paths, and `-OutputMode Json` plus optional `-ResultPath` provide the same machine-readable report shape as the `winget` sample.
+The first download implementation is intentionally a download-only staging sample: `15_app_installer_download.cmd` bridges into `lib/windows/download.ps1` for the App Installer artifact and defaults to planned/no-download output. Real download requires explicit `-AllowDownload`, HTTPS, an allowed host list, and an expected SHA-256. The helper downloads only under `%LOCALAPPDATA%\dingjiai-installer\downloads\staging` through a `.part` file, verifies hash before promotion, and does not execute installers, unpack to system locations, edit PATH, edit registry, or write user configuration. Hash mismatches must delete the partial file or report cleanup failure, optional result files must stay under `%LOCALAPPDATA%\dingjiai-installer`, and retry/timeout inputs are bounded (`RetryCount` 0-5, `TimeoutSeconds` 5-120). Its exit code contract is: planned/downloaded success returns `0`; download boundary failures return `60`; helper/runtime failures return `70`.
 The current first-stage implementation baseline is the startup handoff path: thin public bootstrap, local workspace, manifest-defined payload retrieval, staging-based payload verification, startup state recording, and administrator `cmd.exe` handoff with `handoffAccepted`. Dependency checkpoint actions should be wired only after their sample contracts stay stable.
 
 ### 6. State and logs
@@ -212,10 +219,12 @@ For current framework work:
 - The current `winget` sample reports status and decision only; action decisions such as `install` or `repair` are not executed yet. Its status and decision enums are locked in the helper and validated before output.
 - `winget` repair should first try the shortest source recovery path and escalate to reinstall if the checkpoint is still unhealthy.
 - `winget` install and reinstall should share one App Installer payload path once that payload is connected.
-- current App Installer payload metadata is intentionally minimal and should only track package name, identity, and version.
+- current App Installer payload metadata is intentionally minimal and should only track package name, identity, version, approved download host, and expected SHA-256 when real download is enabled.
+- current download helper behavior is download-only staging: no `-AllowDownload` means planned/no-download output; explicit real download must be HTTPS, host-allowlisted, hash-locked, confined under `%LOCALAPPDATA%\dingjiai-installer\downloads\staging`, staged as `.part`, and hash-verified before promotion. Hash mismatch cleanup, result path containment under `%LOCALAPPDATA%\dingjiai-installer`, and bounded retry/timeout inputs are part of the helper contract.
 - Git discovery should currently keep all planned fields as required inputs.
 - Git allowance should currently reduce to `skip`, `repair`, `upgrade`, `install`, or `reinstall` based on trusted identity, minimum version, and active command resolution.
 - Git install and upgrade should currently assume the single `winget` package path through `Git.Git`.
+- The current Git sample reports status and decision only; action decisions such as `install`, `repair`, `upgrade`, or `reinstall` are not executed yet. Its status and decision enums are locked in the helper and validated before output.
 
 The main Windows dependency chain is expected to include:
 
@@ -239,6 +248,7 @@ For the current rebuild stage of the project:
 - the administrator `cmd.exe` payload now has a real numbered menu loop skeleton
 - menu actions now route to flow entries; most checkpoints are placeholders
 - the install flow has a read-only `winget` checkpoint sample for discovery, diagnosis, and decision output
+- the install flow has a download-only App Installer staging sample that defaults to planned/no-download output
 - real install/update/uninstall mutation logic is not currently wired
 - the next code milestone should rebuild startup first, before dependency checkpoints
 

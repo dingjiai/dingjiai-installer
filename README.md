@@ -1,4 +1,4 @@
-# dingjiai installer
+﻿# dingjiai installer
 
 A beginner-friendly, open-source installer and launcher for Claude CLI, future agents, prerequisites, and commonly needed tools.
 
@@ -40,7 +40,7 @@ The intended main Windows menu remains:
 - `3` 卸载 Claude 和依赖
 - `0` 退出
 
-The administrator `cmd.exe` payload now routes options `1`, `2`, and `3` into separate Windows flow entries under `payload/flows/windows/`. Those flows currently run checkpoint placeholders only and then return to the menu; real install, update, and uninstall logic is not wired yet.
+The administrator `cmd.exe` payload now routes options `1`, `2`, and `3` into separate Windows flow entries under `payload/flows/windows/`. The install flow currently includes read-only `winget` and Git checkpoint samples plus a default no-download App Installer staging sample, while the remaining checkpoints are placeholders; real install, update, and uninstall actions are not wired yet.
 
 ## Claude path tool layering
 
@@ -91,7 +91,7 @@ For the durable baseline and package mapping, see:
 - `notes/architecture/启动阶段（一次性）.md` — current startup-stage implementation source
 - `notes/windows-architecture.md` — supporting Windows architecture notes
 
-Current implementation focus is to rebuild the Windows startup path first: thin public bootstrap, local workspace, manifest and payload verification, and administrator `cmd.exe` handoff. Dependency checkpoints such as `winget`, Git, Claude, and the default enhancement layer should come after that startup handoff is real.
+Current implementation focus is to harden the Windows startup path and then add dependency checkpoints one at a time. The `winget` and Git checkpoints are currently read-only discovery/decision samples, and the App Installer download checkpoint is a download-only staging sample that defaults to planned/no-download mode; Claude, default enhancements, update, and uninstall actions are still placeholders.
 
 ## GitHub Pages publishing target
 
@@ -109,8 +109,11 @@ Current minimal v1 startup and placeholder business layout:
 - `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
 - `docs/installer/windows/payload/ui.ps1` — centered Chinese panel renderer for the administrator CMD UI
 - `docs/installer/windows/payload/flows/windows/*/entry.cmd` — placeholder flow entries for install, update, and uninstall
-- `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — placeholder checkpoint slots for later hardened dependency work
+- `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — checkpoint slots for hardened dependency work; `10_winget.cmd` and `20_git.cmd` are read-only samples, and `15_app_installer_download.cmd` is a download-only staging sample
 - `docs/installer/windows/payload/lib/windows/*.cmd` — thin placeholder shared helper slots
+- `docs/installer/windows/payload/lib/windows/winget.ps1` — read-only `winget` discovery, diagnosis, and decision helper
+- `docs/installer/windows/payload/lib/windows/git.ps1` — read-only Git discovery, placeholder trust diagnosis, and decision helper
+- `docs/installer/windows/payload/lib/windows/download.ps1` — download-only staging helper that defaults to planned/no-download output
 - `docs/installer/windows/payload/tasks/*.cmd` — compatibility shims that forward to the flow entries
 
 `docs/` is the GitHub Pages publishing root for runnable installer assets. Architecture and design Markdown now live under `notes/`, not under `docs/`.
@@ -143,7 +146,7 @@ Implemented in the current startup skeleton:
 
 Not implemented yet after the prototype cleanup:
 
-- real `winget`, Git, Claude, update, and uninstall checkpoint logic
+- real `winget`, Git, Claude, update, and uninstall checkpoint logic beyond the current report/download-only samples
 - GitHub Pages configuration for serving `docs/`
 - DNS setup for `get.dingjiai.com`
 - macOS / Linux remote bootstrap endpoint

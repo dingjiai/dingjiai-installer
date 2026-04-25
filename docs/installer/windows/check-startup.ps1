@@ -143,6 +143,7 @@ $requiredPayloadPaths = @(
     'flows/windows/install/entry.cmd',
     'flows/windows/install/checkpoints/00_preflight.cmd',
     'flows/windows/install/checkpoints/10_winget.cmd',
+    'flows/windows/install/checkpoints/15_app_installer_download.cmd',
     'flows/windows/install/checkpoints/20_git.cmd',
     'flows/windows/install/checkpoints/30_claude.cmd',
     'flows/windows/install/checkpoints/40_enhancements.cmd',
@@ -167,6 +168,8 @@ $requiredPayloadPaths = @(
     'lib/windows/paths.cmd',
     'lib/windows/exec.cmd',
     'lib/windows/winget.ps1',
+    'lib/windows/git.ps1',
+    'lib/windows/download.ps1',
     'tasks/install.cmd',
     'tasks/update.cmd',
     'tasks/uninstall.cmd'
@@ -272,6 +275,118 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($wingetHelper.Contains('version_timeout')) 'winget.ps1 can simulate version timeout'
         Need ($wingetHelper.Contains('source_missing')) 'winget.ps1 can simulate missing official winget source'
         Need ($wingetHelper.Contains('source_untrusted')) 'winget.ps1 can simulate untrusted winget source URL'
+    }
+
+    $downloadCheckpointPath = Join-Path $payloadRoot 'flows/windows/install/checkpoints/15_app_installer_download.cmd'
+    Need (Test-Path -LiteralPath $downloadCheckpointPath -PathType Leaf) 'App Installer download checkpoint cmd exists'
+    if (Test-Path -LiteralPath $downloadCheckpointPath -PathType Leaf) {
+        $downloadCheckpoint = Get-Content -LiteralPath $downloadCheckpointPath -Raw
+        Need ($downloadCheckpoint.Contains('lib\windows\download.ps1')) 'App Installer download checkpoint delegates to download.ps1 helper'
+        Need ($downloadCheckpoint.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'App Installer download checkpoint uses PowerShell helper bridge'
+        Need ($downloadCheckpoint.Contains('%*')) 'App Installer download checkpoint forwards helper arguments for contract tests'
+        Need ($downloadCheckpoint.Contains('app-installer-download')) 'App Installer download checkpoint names the checkpoint explicitly'
+        Need ($downloadCheckpoint.Contains('-ArtifactKind "AppInstaller"')) 'App Installer download checkpoint declares AppInstaller artifact kind'
+        Need ($downloadCheckpoint.Contains('-ArtifactName "app-installer.msixbundle"')) 'App Installer download checkpoint declares App Installer artifact name'
+    }
+
+    $downloadHelperPath = Join-Path $payloadRoot 'lib/windows/download.ps1'
+    Need (Test-Path -LiteralPath $downloadHelperPath -PathType Leaf) 'download.ps1 helper exists'
+    Need (Test-Utf8Bom -Path $downloadHelperPath) 'download.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $downloadHelperPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $downloadHelperPath
+        $downloadHelper = Get-Content -LiteralPath $downloadHelperPath -Raw
+        Need ($downloadHelper.Contains('download-only-staging')) 'download.ps1 stays in download-only staging mode'
+        Need ($downloadHelper.Contains('DownloadFailureExitCode = 60')) 'download.ps1 separates download failure exit code'
+        Need ($downloadHelper.Contains('HelperFailureExitCode = 70')) 'download.ps1 separates helper failure exit code'
+        Need ($downloadHelper.Contains('DecisionReportExitCode = 0')) 'download.ps1 locks decision report exit code'
+        Need ($downloadHelper.Contains('AllowedStatuses')) 'download.ps1 locks status enum contract'
+        Need ($downloadHelper.Contains('AllowedDecisions')) 'download.ps1 locks decision enum contract'
+        Need ($downloadHelper.Contains('ExpectedSha256')) 'download.ps1 requires expected sha256 for real downloads'
+        Need ($downloadHelper.Contains('AllowedHosts')) 'download.ps1 requires an allowed host list for real downloads'
+        Need ($downloadHelper.Contains('AllowDownload')) 'download.ps1 keeps real download behind explicit opt-in'
+        Need ($downloadHelper.Contains('Invoke-WebRequest')) 'download.ps1 performs bounded HTTP download'
+        Need ($downloadHelper.Contains('TimeoutSec')) 'download.ps1 passes timeout to download command'
+        Need ($downloadHelper.Contains('Get-Sha256Hex')) 'download.ps1 verifies downloaded file hash'
+        Need ($downloadHelper.Contains('.part')) 'download.ps1 writes to a partial file before final artifact move'
+        Need ($downloadHelper.Contains('Move-Item')) 'download.ps1 promotes verified staging artifact after hash check'
+        Need ($downloadHelper.Contains('source_blocked')) 'download.ps1 blocks unapproved sources'
+        Need ($downloadHelper.Contains('hash_mismatch')) 'download.ps1 reports hash mismatch explicitly'
+        Need ($downloadHelper.Contains('missing_metadata')) 'download.ps1 refuses real download without locked metadata'
+        Need ($downloadHelper.Contains('function Write-DownloadResultFile')) 'download.ps1 writes optional json result file'
+        Need ($downloadHelper.Contains('function ConvertTo-JsonText')) 'download.ps1 emits ASCII-safe json for pipeline parsing'
+        Need ($downloadHelper.Contains('SkipResultFile')) 'download.ps1 avoids repeated result file failure during fallback output'
+        Need ($downloadHelper.Contains('function Test-ResultContract')) 'download.ps1 validates result contract before output'
+        Need ($downloadHelper.Contains('TestScenario')) 'download.ps1 exposes deterministic test scenarios'
+        Need ($downloadHelper.Contains('helper_failed')) 'download.ps1 can simulate helper failure contract'
+        Need ($downloadHelper.Contains('MinimumRetryCount = 0')) 'download.ps1 locks minimum retry count'
+        Need ($downloadHelper.Contains('MaximumRetryCount = 5')) 'download.ps1 locks maximum retry count'
+        Need ($downloadHelper.Contains('MinimumTimeoutSeconds = 5')) 'download.ps1 locks minimum timeout seconds'
+        Need ($downloadHelper.Contains('MaximumTimeoutSeconds = 120')) 'download.ps1 locks maximum timeout seconds'
+        Need ($downloadHelper.Contains('function Get-ProjectLocalRoot')) 'download.ps1 anchors writable paths under project local root'
+        Need ($downloadHelper.Contains('function Get-ProjectStagingRoot')) 'download.ps1 anchors staging under project local root'
+        Need ($downloadHelper.Contains('function Test-PathInsideRoot')) 'download.ps1 validates path containment'
+        Need ($downloadHelper.Contains('function Get-ParameterBoundaryFailureResult')) 'download.ps1 rejects unsafe parameter boundaries before download'
+        Need ($downloadHelper.Contains('retry count outside allowed range')) 'download.ps1 rejects unbounded retry counts'
+        Need ($downloadHelper.Contains('timeout seconds outside allowed range')) 'download.ps1 rejects unbounded timeout seconds'
+        Need ($downloadHelper.Contains('staging root outside project local staging root')) 'download.ps1 rejects external staging roots'
+        Need ($downloadHelper.Contains('partial file deleted')) 'download.ps1 deletes partial files on hash mismatch'
+        Need ($downloadHelper.Contains('download result path must stay under')) 'download.ps1 restricts result files to project local root'
+    }
+
+    $gitCheckpointPath = Join-Path $payloadRoot 'flows/windows/install/checkpoints/20_git.cmd'
+    Need (Test-Path -LiteralPath $gitCheckpointPath -PathType Leaf) 'Git checkpoint cmd exists'
+    if (Test-Path -LiteralPath $gitCheckpointPath -PathType Leaf) {
+        $gitCheckpoint = Get-Content -LiteralPath $gitCheckpointPath -Raw
+        Need ($gitCheckpoint.Contains('lib\windows\git.ps1')) 'Git checkpoint delegates to git.ps1 helper'
+        Need ($gitCheckpoint.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'Git checkpoint uses PowerShell helper bridge'
+        Need ($gitCheckpoint.Contains('%*')) 'Git checkpoint forwards helper arguments for contract tests'
+    }
+
+    $gitHelperPath = Join-Path $payloadRoot 'lib/windows/git.ps1'
+    Need (Test-Path -LiteralPath $gitHelperPath -PathType Leaf) 'git.ps1 helper exists'
+    Need (Test-Utf8Bom -Path $gitHelperPath) 'git.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $gitHelperPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $gitHelperPath
+        $gitHelper = Get-Content -LiteralPath $gitHelperPath -Raw
+        Need ($gitHelper.Contains('function Get-GitDiscovery')) 'git.ps1 has discovery stage'
+        Need ($gitHelper.Contains('function Get-RealGitDiscovery')) 'git.ps1 keeps real discovery separate from test scenarios'
+        Need ($gitHelper.Contains('function Get-TestGitDiscovery')) 'git.ps1 has deterministic test discovery scenarios'
+        Need ($gitHelper.Contains('function Get-GitDecision')) 'git.ps1 has decision stage'
+        Need ($gitHelper.Contains('function New-GitResult')) 'git.ps1 builds a structured result object'
+        Need ($gitHelper.Contains('function New-HelperFailureResult')) 'git.ps1 builds structured helper failure results'
+        Need ($gitHelper.Contains('function ConvertTo-ProcessArgument')) 'git.ps1 quotes probe arguments'
+        Need ($gitHelper.Contains('WaitForExit($TimeoutSeconds * 1000)')) 'git.ps1 bounds probe runtime with timeout'
+        Need ($gitHelper.Contains('BeginOutputReadLine')) 'git.ps1 reads stdout asynchronously to avoid pipe buffer deadlocks'
+        Need ($gitHelper.Contains('BeginErrorReadLine')) 'git.ps1 reads stderr asynchronously to avoid pipe buffer deadlocks'
+        Need ($gitHelper.Contains('Register-ObjectEvent')) 'git.ps1 captures async probe output in Windows PowerShell 5.1'
+        Need ($gitHelper.Contains('-TimedOut $true')) 'git.ps1 reports probe timeout state'
+        Need ($gitHelper.Contains("MinimumGitVersion = [version] '2.40.0'")) 'git.ps1 locks minimum Git version placeholder'
+        Need ($gitHelper.Contains("ExpectedVersionMarker = 'windows.'")) 'git.ps1 checks Git for Windows version marker placeholder'
+        Need ($gitHelper.Contains("WingetPackageId = 'Git.Git'")) 'git.ps1 reports winget Git package identity'
+        Need ($gitHelper.Contains('HelperFailureExitCode = 70')) 'git.ps1 separates helper failure exit code'
+        Need ($gitHelper.Contains('exitCodeContract')) 'git.ps1 reports exit code contract'
+        Need ($gitHelper.Contains('Get-Command git.exe')) 'git.ps1 discovers active Git command'
+        Need ($gitHelper.Contains("'--version'")) 'git.ps1 probes Git version'
+        Need ($gitHelper.Contains('mutationAllowed')) 'git.ps1 reports mutation boundary'
+        Need ($gitHelper.Contains('actionMode')) 'git.ps1 reports action boundary'
+        Need ($gitHelper.Contains('AllowedStatuses')) 'git.ps1 locks status enum contract'
+        Need ($gitHelper.Contains('AllowedDecisions')) 'git.ps1 locks decision enum contract'
+        Need ($gitHelper.Contains('DecisionReportExitCode = 0')) 'git.ps1 locks decision report exit code'
+        Need ($gitHelper.Contains('function Test-ResultContract')) 'git.ps1 validates result contract before output'
+        Need ($gitHelper.Contains('ResultPath')) 'git.ps1 supports optional result file output'
+        Need ($gitHelper.Contains('function Write-GitResultFile')) 'git.ps1 writes optional json result file'
+        Need ($gitHelper.Contains('Git result file write failed')) 'git.ps1 reports result file write failures explicitly'
+        Need ($gitHelper.Contains('SkipResultFile')) 'git.ps1 avoids repeated result file failure during fallback output'
+        Need ($gitHelper.Contains('discovery-diagnose-decision-only')) 'git.ps1 stays in sample discovery mode'
+        Need ($gitHelper.Contains("ValidateSet('Text', 'Json')")) 'git.ps1 declares text and json output modes'
+        Need ($gitHelper.Contains('ConvertTo-Json -Depth 6')) 'git.ps1 emits structured json output'
+        Need ($gitHelper.Contains('function ConvertTo-JsonText')) 'git.ps1 emits ASCII-safe json for pipeline parsing'
+        Need ($gitHelper.Contains('TestScenario')) 'git.ps1 exposes deterministic test scenarios'
+        Need ($gitHelper.Contains('helper_failed')) 'git.ps1 can simulate helper failure contract'
+        Need ($gitHelper.Contains('version_timeout')) 'git.ps1 can simulate version timeout'
+        Need ($gitHelper.Contains('version_too_old')) 'git.ps1 can simulate old Git version'
+        Need ($gitHelper.Contains('version_untrusted')) 'git.ps1 can simulate untrusted Git version marker'
+        Need ($gitHelper.Contains('path_untrusted')) 'git.ps1 can simulate untrusted Git path shape'
     }
 
     $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1

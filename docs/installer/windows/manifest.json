@@ -17,8 +17,13 @@
       "required": true
     },
     {
+      "path": "flows/windows/install/checkpoints/15_app_installer_download.cmd",
+      "sha256": "cc57de499a7396553555ed164d75b77b8254a28334a12bab9e3dbb0984722b5d",
+      "required": true
+    },
+    {
       "path": "flows/windows/install/checkpoints/20_git.cmd",
-      "sha256": "81722339189693eb86175351ea45f26312161983b5be2fc536971256d26343b0",
+      "sha256": "6248691d30559cd8c59cf79bf7d2465cc8eda4365eec382f98497c6b2c04a573",
       "required": true
     },
     {
@@ -43,7 +48,7 @@
     },
     {
       "path": "flows/windows/install/entry.cmd",
-      "sha256": "5d8888f5ea6c4531c57f6389c1a92e2179aede86e38cf2f5cd5f8dc3da9e0269",
+      "sha256": "53322d8310f4c9e683d2fb7198b51ba906b3acdd87537d617a75d745d85234f3",
       "required": true
     },
     {
@@ -112,8 +117,18 @@
       "required": true
     },
     {
+      "path": "lib/windows/download.ps1",
+      "sha256": "980f6e8b0a02fe621c5dad453084ea504f5e9d9dca9913a5fe9194fc8a1dc486",
+      "required": true
+    },
+    {
       "path": "lib/windows/exec.cmd",
       "sha256": "3b366d283b6c5c85da24e48a90b6ab9be6da666af3f66fc75ed9d233f7b012a9",
+      "required": true
+    },
+    {
+      "path": "lib/windows/git.ps1",
+      "sha256": "c7e2482e21933c8d84f68508104697927c39c70d8e62c3d70c188f0ee56a55da",
       "required": true
     },
     {
