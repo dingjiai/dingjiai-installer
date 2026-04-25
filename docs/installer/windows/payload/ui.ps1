@@ -32,28 +32,28 @@ switch ($Page) {
         Write-BlankLine
         Write-CenteredLine '启动阶段已完成，管理员 CMD 主窗口已接管。'
         Write-BlankLine
-        Write-CenteredLine '当前菜单仍是占位，安装 / 更新 / 卸载尚未接入。'
+        Write-CenteredLine '当前菜单已接入 flow 骨架，checkpoint 仍是占位。'
         Write-BlankLine
-        Write-CenteredLine '[1] 安装 Claude 和依赖       未接入'
-        Write-CenteredLine '[2] 更新 Claude 和依赖       未接入'
-        Write-CenteredLine '[3] 卸载 Claude 和依赖       未接入'
+        Write-CenteredLine '[1] 安装 Claude 和依赖       占位 flow'
+        Write-CenteredLine '[2] 更新 Claude 和依赖       占位 flow'
+        Write-CenteredLine '[3] 卸载 Claude 和依赖       占位 flow'
         Write-BlankLine
         Write-CenteredLine '[0] 退出'
     }
     'install' {
         Write-CenteredLine '           安装 Claude 和依赖'
         Write-BlankLine
-        Write-CenteredLine '当前任务仍是占位，真实安装流程尚未接入。'
+        Write-CenteredLine '当前会进入安装 flow 骨架；不会修改系统。'
     }
     'update' {
         Write-CenteredLine '           更新 Claude 和依赖'
         Write-BlankLine
-        Write-CenteredLine '当前任务仍是占位，真实更新流程尚未接入。'
+        Write-CenteredLine '当前会进入更新 flow 骨架；不会修改系统。'
     }
     'uninstall' {
         Write-CenteredLine '           卸载 Claude 和依赖'
         Write-BlankLine
-        Write-CenteredLine '当前任务仍是占位，真实卸载流程尚未接入。'
+        Write-CenteredLine '当前会进入卸载 flow 骨架；不会修改系统。'
     }
 }
 

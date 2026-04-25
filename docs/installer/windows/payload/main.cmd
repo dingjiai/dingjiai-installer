@@ -94,33 +94,33 @@ cls
 call :render_ui main
 choice /C:1230 /N /M "              Press a key [1,2,3,0]: "
 if errorlevel 4 exit
-if errorlevel 3 goto placeholder_uninstall
-if errorlevel 2 goto placeholder_update
-if errorlevel 1 goto placeholder_install
+if errorlevel 3 goto flow_uninstall
+if errorlevel 2 goto flow_update
+if errorlevel 1 goto flow_install
 goto main_menu
 
-:placeholder_install
+:flow_install
 cls
 call :render_ui install
-call "%PAYLOAD_ROOT%\tasks\install.cmd"
+call "%PAYLOAD_ROOT%\flows\windows\install\entry.cmd"
 echo(
 pause
 cls
 goto main_menu
 
-:placeholder_update
+:flow_update
 cls
 call :render_ui update
-call "%PAYLOAD_ROOT%\tasks\update.cmd"
+call "%PAYLOAD_ROOT%\flows\windows\update\entry.cmd"
 echo(
 pause
 cls
 goto main_menu
 
-:placeholder_uninstall
+:flow_uninstall
 cls
 call :render_ui uninstall
-call "%PAYLOAD_ROOT%\tasks\uninstall.cmd"
+call "%PAYLOAD_ROOT%\flows\windows\uninstall\entry.cmd"
 echo(
 pause
 cls

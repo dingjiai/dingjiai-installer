@@ -2,7 +2,7 @@
 
 A beginner-friendly, open-source installer and launcher for Claude CLI, future agents, prerequisites, and commonly needed tools.
 
-This repository is currently being rebuilt from the old shell prototype into a MAS-inspired Windows startup architecture. The old local prototype scripts have been removed; the next implementation should follow the startup-stage documents under `docs/新版架构讨论/`.
+This repository is currently being rebuilt from the old shell prototype into a MAS-inspired Windows startup architecture. The old local prototype scripts have been removed; the next implementation should follow the startup-stage documents under `notes/architecture/`.
 
 ## Target entry points
 
@@ -40,7 +40,7 @@ The intended main Windows menu remains:
 - `3` 卸载 Claude 和依赖
 - `0` 退出
 
-These menu action flows are not currently wired after the prototype cleanup. The administrator `cmd.exe` payload now has a real numbered menu loop, but options `1`, `2`, and `3` still show honest placeholders and return to the menu.
+The administrator `cmd.exe` payload now routes options `1`, `2`, and `3` into separate Windows flow entries under `payload/flows/windows/`. Those flows currently run checkpoint placeholders only and then return to the menu; real install, update, and uninstall logic is not wired yet.
 
 ## Claude path tool layering
 
@@ -87,8 +87,8 @@ For the durable baseline and package mapping, see:
 
 ## Architecture notes
 
-- `docs/新版架构讨论/整体架构.md` — current architecture discussion source
-- `docs/新版架构讨论/启动阶段（一次性）.md` — current startup-stage implementation source
+- `notes/architecture/整体架构.md` — current architecture discussion source
+- `notes/architecture/启动阶段（一次性）.md` — current startup-stage implementation source
 - `notes/windows-architecture.md` — supporting Windows architecture notes
 
 Current implementation focus is to rebuild the Windows startup path first: thin public bootstrap, local workspace, manifest and payload verification, and administrator `cmd.exe` handoff. Dependency checkpoints such as `winget`, Git, Claude, and the default enhancement layer should come after that startup handoff is real.
@@ -101,16 +101,19 @@ Static installer files should continue to be compatible with GitHub Pages hostin
 get.dingjiai.com
 ```
 
-Current minimal v1 startup layout:
+Current minimal v1 startup and placeholder business layout:
 
-- `docs/win.ps1` — thin public Windows bootstrap entry
+- `docs/win.ps1` — thin public Windows bootstrap entry kept at the GitHub Pages root for the public command
 - `docs/installer/windows/check-startup.ps1` — local Windows startup manifest and payload self-check
 - `docs/installer/windows/manifest.json` — startup payload manifest
 - `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
 - `docs/installer/windows/payload/ui.ps1` — centered Chinese panel renderer for the administrator CMD UI
-- `docs/installer/windows/payload/tasks/*.cmd` — placeholder task executors for install, update, and uninstall
+- `docs/installer/windows/payload/flows/windows/*/entry.cmd` — placeholder flow entries for install, update, and uninstall
+- `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — placeholder checkpoint slots for later hardened dependency work
+- `docs/installer/windows/payload/lib/windows/*.cmd` — thin placeholder shared helper slots
+- `docs/installer/windows/payload/tasks/*.cmd` — compatibility shims that forward to the flow entries
 
-This layout is intentionally minimal and only covers the startup handoff skeleton. The old prototype payload file layout has been removed.
+`docs/` is the GitHub Pages publishing root for runnable installer assets. Architecture and design Markdown now live under `notes/`, not under `docs/`.
 
 ## Project status
 
@@ -133,14 +136,14 @@ Implemented in the current startup skeleton:
 - local startup state file
 - administrator `cmd.exe` handoff attempt and 30s `handoffAccepted` wait
 - administrator `cmd.exe` numbered menu loop skeleton with a fixed-size centered panel UI
-- split placeholder task executor scripts for install, update, and uninstall
+- split placeholder Windows flow, checkpoint, and thin shared helper skeletons for install, update, and uninstall
 - startup state JSON checks and startup JSONL log output
 - Windows build 17763+ and PowerShell 5.1+ startup hard gates
 - unified startup failure output with reason, suggestion, and log path
 
 Not implemented yet after the prototype cleanup:
 
-- real `winget`, Git, Claude, update, and uninstall flows
+- real `winget`, Git, Claude, update, and uninstall checkpoint logic
 - GitHub Pages configuration for serving `docs/`
 - DNS setup for `get.dingjiai.com`
 - macOS / Linux remote bootstrap endpoint

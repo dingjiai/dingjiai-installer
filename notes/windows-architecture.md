@@ -1,6 +1,6 @@
 # Windows installer architecture notes
 
-This file records supporting architecture decisions for the Windows-first installer. The current rebuild source of truth is the newer architecture discussion under `docs/新版架构讨论/`, especially `docs/新版架构讨论/启动阶段（一次性）.md`.
+This file records supporting architecture decisions for the Windows-first installer. The current rebuild source of truth is the newer architecture discussion under `notes/architecture/`, especially `notes/architecture/启动阶段（一次性）.md`.
 
 ## Project positioning
 
@@ -29,13 +29,17 @@ Hosting strategy:
 - host static bootstrap and payload files through GitHub Pages
 - keep installer delivery independent from the main tutorial website and its server health
 
-Current minimal v1 startup layout:
+Current minimal v1 startup and placeholder business layout:
 
 - `docs/win.ps1` — thin public Windows bootstrap entry
 - `docs/installer/windows/manifest.json` — startup payload manifest
 - `docs/installer/windows/payload/main.cmd` — administrator `cmd.exe` menu orchestrator
-- `docs/installer/windows/payload/tasks/*.cmd` — placeholder task executors for install, update, and uninstall
+- `docs/installer/windows/payload/flows/windows/*/entry.cmd` — placeholder flow entries for install, update, and uninstall
+- `docs/installer/windows/payload/flows/windows/*/checkpoints/*.cmd` — placeholder checkpoint slots for component work
+- `docs/installer/windows/payload/lib/windows/*.cmd` — thin shared helper placeholders
+- `docs/installer/windows/payload/tasks/*.cmd` — compatibility shims that forward to flow entries
 - keep `docs/CNAME` for the dedicated install subdomain when GitHub Pages is configured
+- keep design Markdown under `notes/`; `docs/` should stay a publishing root for runnable assets
 - do not reuse the removed old prototype payload layout as the current baseline
 
 ## Layered Windows architecture
@@ -229,7 +233,7 @@ For the current rebuild stage of the project:
 
 - the previous Windows launcher prototype has been removed
 - the administrator `cmd.exe` payload now has a real numbered menu loop skeleton
-- menu actions are still placeholders and are not currently wired to real install/update/uninstall logic
+- menu actions now route to placeholder flow entries, but are not currently wired to real install/update/uninstall logic
 - real installation logic is not currently wired
 - the next code milestone should rebuild startup first, before dependency checkpoints
 
@@ -244,9 +248,10 @@ Current planned actions remain:
 At the current rebuild stage:
 
 - the previous local Windows launcher and published prototype payload files have been removed
-- `docs/新版架构讨论/整体架构.md` is the current architecture discussion source
-- `docs/新版架构讨论/启动阶段（一次性）.md` is the current startup-stage implementation source
+- `notes/architecture/整体架构.md` is the current architecture discussion source
+- `notes/architecture/启动阶段（一次性）.md` is the current startup-stage implementation source
 - the new `docs/` publishing layout should be defined by the manifest and payload implementation, not by the removed prototype files
+- design Markdown has moved out of `docs/` and into `notes/`; `docs/` should stay focused on publishable installer assets
 
 ## Next architecture topics
 

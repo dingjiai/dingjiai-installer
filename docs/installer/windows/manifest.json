@@ -7,28 +7,158 @@
   "handoffMode": "admin-cmd",
   "files": [
     {
-      "path": "main.cmd",
-      "sha256": "41d69b5e22a5e88e8b63f459a308cde2bc3d1ee502f63001a7925bc9d9345531",
+      "path": "flows/windows/install/checkpoints/00_preflight.cmd",
+      "sha256": "9fd6383fbaac8a3fedd3fce38c6925f11aa43871d805f517c9db96f08cf73de0",
       "required": true
     },
     {
-      "path": "ui.ps1",
-      "sha256": "9e0b858d2a9b3f27dfa064b026b89f6defa640870f8d1b6b67b5dc7df3f4f161",
+      "path": "flows/windows/install/checkpoints/10_winget.cmd",
+      "sha256": "bda975fc9ae4b5d43c36107cb271d94182cc99576340889b6cc46fb83daf9157",
+      "required": true
+    },
+    {
+      "path": "flows/windows/install/checkpoints/20_git.cmd",
+      "sha256": "81722339189693eb86175351ea45f26312161983b5be2fc536971256d26343b0",
+      "required": true
+    },
+    {
+      "path": "flows/windows/install/checkpoints/30_claude.cmd",
+      "sha256": "cbb26dc813ba8362e0c200a903219e4d894b836b800b88c1df258a55730b5deb",
+      "required": true
+    },
+    {
+      "path": "flows/windows/install/checkpoints/40_enhancements.cmd",
+      "sha256": "3cc8e4fe4de60432547e893685d0b360420ceb36491a38343571501909a5bfce",
+      "required": true
+    },
+    {
+      "path": "flows/windows/install/checkpoints/50_config.cmd",
+      "sha256": "53244e920d088e0b643efde2133c3a78dc2cc7c391b9a0d54a08b0f392762bb5",
+      "required": true
+    },
+    {
+      "path": "flows/windows/install/checkpoints/90_finalize.cmd",
+      "sha256": "9b6b9f65fdda80b368e5c39896c149662993059d9680592a1da445251051b189",
+      "required": true
+    },
+    {
+      "path": "flows/windows/install/entry.cmd",
+      "sha256": "5d8888f5ea6c4531c57f6389c1a92e2179aede86e38cf2f5cd5f8dc3da9e0269",
+      "required": true
+    },
+    {
+      "path": "flows/windows/uninstall/checkpoints/00_preflight.cmd",
+      "sha256": "e3f6e649c278dc2d74eb5d82e4be754ab5459ae49a5e0a3c3bceefe3c74878f5",
+      "required": true
+    },
+    {
+      "path": "flows/windows/uninstall/checkpoints/30_claude.cmd",
+      "sha256": "624e1c4f90bc6223cdc354add3c3d5d045129b1a21703d881a866a2a84ea93f7",
+      "required": true
+    },
+    {
+      "path": "flows/windows/uninstall/checkpoints/40_enhancements.cmd",
+      "sha256": "9d6bf31dd215dd1f4a26bf6ff1e8d68ccafaf98df8fb8910542584a68ee2bc0b",
+      "required": true
+    },
+    {
+      "path": "flows/windows/uninstall/checkpoints/90_finalize.cmd",
+      "sha256": "ad41597d79d9d56272c81bea88e0dac522f0d8b2ca522826361db0a8556a452e",
+      "required": true
+    },
+    {
+      "path": "flows/windows/uninstall/entry.cmd",
+      "sha256": "054c802be313763a414daf3485e20f6e3e0754186210f2ec278894ac50be957e",
+      "required": true
+    },
+    {
+      "path": "flows/windows/update/checkpoints/00_preflight.cmd",
+      "sha256": "96a0fdd0b7eb7001964a425965a32c9a9fb59522afd6095067ae13fcab24a56f",
+      "required": true
+    },
+    {
+      "path": "flows/windows/update/checkpoints/20_git.cmd",
+      "sha256": "3f957b576d9e01edca59f748fadfff5c5f83ed73ae31f5e054b92cc36a1d47b8",
+      "required": true
+    },
+    {
+      "path": "flows/windows/update/checkpoints/30_claude.cmd",
+      "sha256": "e6a5b6e3a22a8084a8064cac0bcfb5e2debb92dbefb2b6d1ee0774d3d78495e6",
+      "required": true
+    },
+    {
+      "path": "flows/windows/update/checkpoints/40_enhancements.cmd",
+      "sha256": "8d9151662dc5718d7231f32775ce002abbcc793ece0d28dfc90301f7d1e9ca9c",
+      "required": true
+    },
+    {
+      "path": "flows/windows/update/checkpoints/90_finalize.cmd",
+      "sha256": "d991f9b53a3bd572332e8ecc6d835f76279e227fd160df5f47b7311b33498631",
+      "required": true
+    },
+    {
+      "path": "flows/windows/update/entry.cmd",
+      "sha256": "432b621fd6bc90e7f76d433f0dfca52607524a1da55962c9a5604f08eceb67b5",
+      "required": true
+    },
+    {
+      "path": "lib/windows/checkpoint_runner.cmd",
+      "sha256": "402b4092e873451c26ccc6abf893b952f8d2f0dac7fbc8ff8f0851e5b0ad64b0",
+      "required": true
+    },
+    {
+      "path": "lib/windows/detect.cmd",
+      "sha256": "c5e9f056a77191a074fee184d6a014f626e255515d6b0c755d5334b5a447c52a",
+      "required": true
+    },
+    {
+      "path": "lib/windows/exec.cmd",
+      "sha256": "3b366d283b6c5c85da24e48a90b6ab9be6da666af3f66fc75ed9d233f7b012a9",
+      "required": true
+    },
+    {
+      "path": "lib/windows/log.cmd",
+      "sha256": "861d0d29f9b500661fdadcaf1b717c5c4df9b8730e0926b9fe04bbac4b7f59ea",
+      "required": true
+    },
+    {
+      "path": "lib/windows/paths.cmd",
+      "sha256": "590869604c4c7fb7ed00bd852a030f297551a86a8abccf648fb0137c1ee09d34",
+      "required": true
+    },
+    {
+      "path": "lib/windows/state.cmd",
+      "sha256": "f2c9eca76efc8d9a2038291c48d8bfe6e76ebce63d3f595726cb3c3a825a2674",
+      "required": true
+    },
+    {
+      "path": "lib/windows/ui_bridge.cmd",
+      "sha256": "c3ad4c8feaedae0eb214428f94f2376ab3dc2274e0532d644c2556b13faf5e87",
+      "required": true
+    },
+    {
+      "path": "main.cmd",
+      "sha256": "ea5c9f0bba82059aa25f005ef454fa3e70593e8c242afe7331f7cd0b0e6c4429",
       "required": true
     },
     {
       "path": "tasks/install.cmd",
-      "sha256": "e22f13a02149cb2b1902d938ebe52aa71560294e4df177a644915a94fb1bf3f9",
-      "required": true
-    },
-    {
-      "path": "tasks/update.cmd",
-      "sha256": "f8b0593bbbc798a5673394b60e1e43968b3e0be54fb559630b5429518e966aa5",
+      "sha256": "df6ab713facda63b0da349b0b608fa4ad98029e758ecd6a74347c5aa65045723",
       "required": true
     },
     {
       "path": "tasks/uninstall.cmd",
-      "sha256": "af191c9bd15f1b583aa6fc6b489a27b1d596699281bb14bfba5017337bece227",
+      "sha256": "406546b0a745a49844ba14b1c0eb44b3d46daab4c8ae30a1d2c1274e83dd6a5b",
+      "required": true
+    },
+    {
+      "path": "tasks/update.cmd",
+      "sha256": "264788f8b6e13a931430a1a560638fbe3507f5ab6acdb38400d144bae12227ba",
+      "required": true
+    },
+    {
+      "path": "ui.ps1",
+      "sha256": "76be59e8a2d000dba56da249d50f0744e7d744d377f6c83ecafc672fdcf7c768",
       "required": true
     }
   ]

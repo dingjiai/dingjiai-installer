@@ -195,22 +195,24 @@ irm https://get.dingjiai.com/win.ps1 | iex
 
 ## Current repository interpretation
 - The previous local shell prototype files have been removed and should not be treated as the current implementation baseline.
-- `docs/新版架构讨论/整体架构.md` — current architecture discussion source for the rebuild.
-- `docs/新版架构讨论/启动阶段（一次性）.md` — current startup-stage implementation source for the Windows rebuild.
-- `docs/MAS分析报告/deep-research-report.md` — MAS analysis source material for clean-room mechanism study.
+- `notes/architecture/整体架构.md` — current architecture discussion source for the rebuild.
+- `notes/architecture/启动阶段（一次性）.md` — current startup-stage implementation source for the Windows rebuild.
+- `notes/mas-analysis/deep-research-report.md` — MAS analysis source material for clean-room mechanism study.
 - `notes/windows-architecture.md` — supporting Windows architecture notes that must stay aligned with the new startup architecture.
 - `notes/claude-cli-baseline.md` — tracks the official and confirmed must-install baseline for the Claude CLI path.
 - `notes/tool-inventory.md` — tracks the broader tool inventory and the current local installed/not-installed snapshot.
+- `docs/` is the GitHub Pages publishing root for runnable installer assets; do not place architecture Markdown there.
+- Windows menu business skeletons live under `docs/installer/windows/payload/flows/windows/`, with shared placeholders under `docs/installer/windows/payload/lib/windows/`.
 
 ## Current stage rule
 - This repository is currently in a Windows startup rebuild stage after the old shell prototype cleanup.
-- The current first-stage implementation baseline is the MAS-inspired `manifest + payload + administrator cmd.exe handoff` startup path described in `docs/新版架构讨论/启动阶段（一次性）.md`.
+- The current first-stage implementation baseline is the MAS-inspired `manifest + payload + administrator cmd.exe handoff` startup path described in `notes/architecture/启动阶段（一次性）.md`.
 - The intended flow includes a real first-stage startup detection pass before entering the menu.
 - That startup detection flow is still being stabilized and should not yet be treated as production-ready.
 - The old menu option `1` winget/Git milestone implementation has been removed with the prototype files and should not be described as currently wired.
-- Menu options `1`, `2`, and `3` currently exist in the administrator `cmd.exe` menu loop and route into split placeholder task executor scripts only; their real install, update, and uninstall actions are not wired yet.
+- Menu options `1`, `2`, and `3` currently exist in the administrator `cmd.exe` menu loop and route into split Windows flow entries under `payload/flows/windows/`; those entries call checkpoint placeholders only, and their real install, update, and uninstall actions are not wired yet.
 - Do not describe unfinished flows as production-ready.
-- Before wiring later install logic, keep architecture and user journey decisions aligned with this file and `docs/新版架构讨论/`.
+- Before wiring later install logic, keep architecture and user journey decisions aligned with this file and `notes/architecture/`.
 - Do not add extra `settings.json` defaults beyond the currently confirmed items yet.
 - The immediate goal is to rebuild the startup framework and publish the first working Windows version before expanding the bundle.
 - Run `docs/installer/windows/check-startup.ps1` after changing Windows startup payload files, `manifest.json`, runtime gates, or failure-output contracts to catch hash drift and startup contract regressions.
@@ -241,13 +243,14 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - When the product positioning changes, update this file.
 - Any project fact, rule, decision, constraint, or direction explicitly confirmed by the user should be written into this file if it is durable.
 - For every future architecture, product, workflow, naming, distribution, or implementation-strategy decision, update the relevant project documentation immediately without waiting for the user to remind you.
-- When a discussion is currently being developed in `docs/新版架构讨论/`, write the newly agreed decision into the matching topic document in that directory as part of the same turn or same change.
-- If no matching topic document exists yet under `docs/新版架构讨论/`, create or propose the appropriate document before continuing the design thread.
+- When a discussion is currently being developed in `notes/architecture/`, write the newly agreed decision into the matching topic document in that directory as part of the same turn or same change.
+- If no matching topic document exists yet under `notes/architecture/`, create or propose the appropriate document before continuing the design thread.
 - Treat user-confirmed decisions as the source of truth for future maintenance unless the user later changes them.
 - Keep documented project reality aligned with the current agreed reality.
 - If the user confirms something and the docs are now out of sync, update the docs rather than leaving the mismatch for later.
 - When the user-facing entry command, menu structure, hosting layout, or core workflow changes, update `README.md`.
 - When deeper rationale is needed, record it in `notes/*.md`, but keep the durable rule in this file.
+- Keep `docs/` free of design Markdown; use it only for publishable installer assets such as bootstrap scripts, manifests, payloads, and self-checks.
 - When the broader helper-tool list or the current local tool status snapshot changes, update `notes/tool-inventory.md`.
 - For tracked helper tools, record the exact package identity in `notes/tool-inventory.md` and do not substitute similarly named packages without explicit user confirmation.
 - Once a default tool is selected for a capability, remove unchosen alternatives from `notes/tool-inventory.md` instead of keeping them as pending reminders.

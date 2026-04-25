@@ -139,6 +139,41 @@ foreach ($file in $manifest.files) {
 
 Need $mainEntrySeen 'manifest includes required main entry'
 
+$requiredPayloadPaths = @(
+    'flows/windows/install/entry.cmd',
+    'flows/windows/install/checkpoints/00_preflight.cmd',
+    'flows/windows/install/checkpoints/10_winget.cmd',
+    'flows/windows/install/checkpoints/20_git.cmd',
+    'flows/windows/install/checkpoints/30_claude.cmd',
+    'flows/windows/install/checkpoints/40_enhancements.cmd',
+    'flows/windows/install/checkpoints/50_config.cmd',
+    'flows/windows/install/checkpoints/90_finalize.cmd',
+    'flows/windows/update/entry.cmd',
+    'flows/windows/update/checkpoints/00_preflight.cmd',
+    'flows/windows/update/checkpoints/20_git.cmd',
+    'flows/windows/update/checkpoints/30_claude.cmd',
+    'flows/windows/update/checkpoints/40_enhancements.cmd',
+    'flows/windows/update/checkpoints/90_finalize.cmd',
+    'flows/windows/uninstall/entry.cmd',
+    'flows/windows/uninstall/checkpoints/00_preflight.cmd',
+    'flows/windows/uninstall/checkpoints/30_claude.cmd',
+    'flows/windows/uninstall/checkpoints/40_enhancements.cmd',
+    'flows/windows/uninstall/checkpoints/90_finalize.cmd',
+    'lib/windows/checkpoint_runner.cmd',
+    'lib/windows/ui_bridge.cmd',
+    'lib/windows/log.cmd',
+    'lib/windows/state.cmd',
+    'lib/windows/detect.cmd',
+    'lib/windows/paths.cmd',
+    'lib/windows/exec.cmd',
+    'tasks/install.cmd',
+    'tasks/update.cmd',
+    'tasks/uninstall.cmd'
+)
+foreach ($requiredPayloadPath in $requiredPayloadPaths) {
+    Need ($seenPaths.ContainsKey($requiredPayloadPath)) "manifest includes payload structure file: $requiredPayloadPath"
+}
+
 $mainCmdPath = Join-Path $payloadRoot 'main.cmd'
 if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     $mainCmd = Get-Content -LiteralPath $mainCmdPath -Raw
@@ -152,6 +187,9 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need ($mainCmd -match '--source') 'main.cmd accepts source'
     Need ($mainCmd -match '--handoff-mode') 'main.cmd accepts handoff mode'
     Need ($mainCmd -match 'ui\.ps1') 'main.cmd delegates UI rendering to ui.ps1'
+    Need ($mainCmd.Contains('flows\windows\install\entry.cmd')) 'main.cmd routes menu 1 to install flow entry'
+    Need ($mainCmd.Contains('flows\windows\update\entry.cmd')) 'main.cmd routes menu 2 to update flow entry'
+    Need ($mainCmd.Contains('flows\windows\uninstall\entry.cmd')) 'main.cmd routes menu 3 to uninstall flow entry'
     Need ($mainCmd -match '(?m)^if errorlevel 4 exit\s*$') 'main.cmd exits administrator window from menu 0'
     Need ($mainCmd -match '(?m)^chcp 65001 >nul\s*$') 'main.cmd switches UI rendering to UTF-8 code page'
 
@@ -160,6 +198,21 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need (Test-Utf8Bom -Path $uiPath) 'ui.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
     if (Test-Path -LiteralPath $uiPath -PathType Leaf) {
         Test-PowerShellFileSyntax -Path $uiPath
+    }
+
+    $flowEntries = @(
+        'flows\windows\install\entry.cmd',
+        'flows\windows\update\entry.cmd',
+        'flows\windows\uninstall\entry.cmd'
+    )
+    foreach ($flowEntry in $flowEntries) {
+        $flowPath = Join-Path $payloadRoot $flowEntry
+        Need (Test-Path -LiteralPath $flowPath -PathType Leaf) "flow entry exists: $flowEntry"
+        if (Test-Path -LiteralPath $flowPath -PathType Leaf) {
+            $flowText = Get-Content -LiteralPath $flowPath -Raw
+            Need ($flowText.Contains('checkpoints\')) "flow entry calls checkpoints: $flowEntry"
+            Need ($flowText.Contains('exit /b 0')) "flow entry returns success from placeholder path: $flowEntry"
+        }
     }
 
     $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1
