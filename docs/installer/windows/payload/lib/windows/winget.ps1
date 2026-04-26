@@ -12,13 +12,16 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
+$script:ContractVersion = 'checkpoint.v1'
+$script:ComponentName = 'winget'
 $script:ProbeTimeoutSeconds = 15
 $script:HelperFailureExitCode = 70
 $script:SampleMode = 'discovery-diagnose-decision-only'
 $script:ActionMode = 'report-only'
-$script:AllowedStatuses = @('healthy', 'missing', 'command_broken', 'source_broken', 'helper_failed')
+$script:AllowedStatuses = @('healthy', 'missing', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')
 $script:AllowedDecisions = @('skip', 'install', 'repair', 'abort')
 $script:DecisionReportExitCode = 0
+$script:OfficialWingetSourceUrl = 'https://cdn.winget.microsoft.com/cache'
 
 function Write-Section {
     param([string] $Text)
@@ -55,6 +58,104 @@ function New-ProbeResult {
     }
 }
 
+function Test-CurrentProcessAdmin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Test-WindowsAppsPath {
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+    return $Path.EndsWith('\WindowsApps\winget.exe', [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-ProjectLocalRoot {
+    $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+    if ([string]::IsNullOrWhiteSpace($localAppData)) {
+        $localAppData = $env:TEMP
+    }
+    return (Join-Path $localAppData 'dingjiai-installer')
+}
+
+function Get-NormalizedFullPath {
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    } catch {
+        return $null
+    }
+}
+
+function Test-PathInsideRoot {
+    param(
+        [string] $Path,
+        [string] $Root
+    )
+
+    $normalizedPath = Get-NormalizedFullPath -Path $Path
+    $normalizedRoot = Get-NormalizedFullPath -Path $Root
+    if ($null -eq $normalizedPath -or $null -eq $normalizedRoot) {
+        return $false
+    }
+    if ($normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
+    return $normalizedPath.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-WingetSourceFacts {
+    param([string] $SourceOutput)
+
+    $expectedUrl = $script:OfficialWingetSourceUrl
+    $facts = [ordered] @{
+        parsed = $false
+        found = $false
+        nameMatched = $false
+        urlMatched = $false
+        expectedUrls = @($expectedUrl)
+        actualName = $null
+        actualUrl = $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($SourceOutput)) {
+        return [pscustomobject] $facts
+    }
+
+    foreach ($line in ($SourceOutput -split "`r?`n")) {
+        $match = [regex]::Match($line, '^\s*(\S+)\s+(https?://\S+)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (-not $match.Success) {
+            continue
+        }
+
+        $facts.parsed = $true
+        $name = $match.Groups[1].Value
+        $url = $match.Groups[2].Value
+        if ($name -ieq 'winget') {
+            $facts.nameMatched = $true
+            $facts.actualName = $name
+            $facts.actualUrl = $url
+            if ($url -ieq $expectedUrl) {
+                $facts.found = $true
+                $facts.urlMatched = $true
+                break
+            }
+        }
+    }
+
+    return [pscustomobject] $facts
+}
+
 function New-WingetDiscovery {
     param(
         [bool] $CommandFound,
@@ -72,6 +173,8 @@ function New-WingetDiscovery {
         [string] $SourceOutput
     )
 
+    $officialSource = Get-WingetSourceFacts -SourceOutput $SourceOutput
+
     return [pscustomobject] @{
         commandFound = $CommandFound
         commandPath = $CommandPath
@@ -87,6 +190,36 @@ function New-WingetDiscovery {
         sourceHasWinget = $SourceHasWinget
         sourceError = $SourceError
         sourceOutput = $SourceOutput
+        environment = [pscustomobject] @{
+            osBuild = [Environment]::OSVersion.Version.Build
+            is64BitOperatingSystem = [Environment]::Is64BitOperatingSystem
+            is64BitProcess = [Environment]::Is64BitProcess
+            isAdmin = Test-CurrentProcessAdmin
+            languageMode = $ExecutionContext.SessionState.LanguageMode.ToString()
+        }
+        command = [pscustomobject] @{
+            found = $CommandFound
+            path = $CommandPath
+            isWindowsAppsPath = Test-WindowsAppsPath -Path $CommandPath
+            resolvedByGetCommand = $CommandFound
+        }
+        versionProbe = [pscustomobject] @{
+            attempted = $CommandFound
+            ok = $VersionOk
+            exitCode = $VersionExitCode
+            timedOut = $VersionTimedOut
+            stdout = $Version
+            stderr = $VersionError
+        }
+        sourceProbe = [pscustomobject] @{
+            attempted = $CommandFound
+            ok = ($null -ne $SourceExitCode -and $SourceExitCode -eq 0 -and -not $SourceTimedOut)
+            exitCode = $SourceExitCode
+            timedOut = $SourceTimedOut
+            stdout = $SourceOutput
+            stderr = $SourceError
+        }
+        officialSource = $officialSource
     }
 }
 
@@ -121,6 +254,73 @@ function Get-TestWingetDiscovery {
     }
 
     throw "Unknown winget test scenario: $Scenario"
+}
+
+function Get-TestScenarioExpectation {
+    param([string] $Scenario)
+
+    switch ($Scenario) {
+        'healthy' {
+            return [pscustomobject] @{ status = 'healthy'; decision = 'skip'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $true; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $true; officialSourceNameMatched = $true; officialSourceUrlMatched = $true }
+        }
+        'missing' {
+            return [pscustomobject] @{ status = 'missing'; decision = 'install'; exitCode = 0; commandFound = $false; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+        }
+        'version_failed' {
+            return [pscustomobject] @{ status = 'command_broken'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+        }
+        'version_timeout' {
+            return [pscustomobject] @{ status = 'command_timeout'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $false; versionTimedOut = $true; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+        }
+        'source_failed' {
+            return [pscustomobject] @{ status = 'source_broken'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 1; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+        }
+        'source_timeout' {
+            return [pscustomobject] @{ status = 'source_timeout'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $true; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+        }
+        'source_missing' {
+            return [pscustomobject] @{ status = 'source_missing'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+        }
+        'source_untrusted' {
+            return [pscustomobject] @{ status = 'source_untrusted'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $true; officialSourceUrlMatched = $false }
+        }
+    }
+
+    throw "Unknown winget test scenario expectation: $Scenario"
+}
+
+function Assert-EqualValue {
+    param(
+        [string] $Name,
+        $Actual,
+        $Expected
+    )
+
+    if ($Actual -ne $Expected) {
+        throw "winget test scenario contract violation: $Name expected '$Expected' but got '$Actual'"
+    }
+}
+
+function Test-TestScenarioContract {
+    param($Result)
+
+    if ($TestScenario -eq 'none' -or $TestScenario -eq 'helper_failed' -or $Result.decision.status -eq 'helper_failed') {
+        return
+    }
+
+    $expected = Get-TestScenarioExpectation -Scenario $TestScenario
+    Assert-EqualValue -Name 'decision.status' -Actual $Result.decision.status -Expected $expected.status
+    Assert-EqualValue -Name 'decision.decision' -Actual $Result.decision.decision -Expected $expected.decision
+    Assert-EqualValue -Name 'decision.exitCode' -Actual $Result.decision.exitCode -Expected $expected.exitCode
+    Assert-EqualValue -Name 'discovery.commandFound' -Actual $Result.discovery.commandFound -Expected $expected.commandFound
+    Assert-EqualValue -Name 'discovery.versionOk' -Actual $Result.discovery.versionOk -Expected $expected.versionOk
+    Assert-EqualValue -Name 'discovery.versionTimedOut' -Actual $Result.discovery.versionTimedOut -Expected $expected.versionTimedOut
+    Assert-EqualValue -Name 'discovery.sourceOk' -Actual $Result.discovery.sourceOk -Expected $expected.sourceOk
+    Assert-EqualValue -Name 'discovery.sourceExitCode' -Actual $Result.discovery.sourceExitCode -Expected $expected.sourceExitCode
+    Assert-EqualValue -Name 'discovery.sourceTimedOut' -Actual $Result.discovery.sourceTimedOut -Expected $expected.sourceTimedOut
+    Assert-EqualValue -Name 'discovery.officialSource.found' -Actual $Result.discovery.officialSource.found -Expected $expected.officialSourceFound
+    Assert-EqualValue -Name 'discovery.officialSource.nameMatched' -Actual $Result.discovery.officialSource.nameMatched -Expected $expected.officialSourceNameMatched
+    Assert-EqualValue -Name 'discovery.officialSource.urlMatched' -Actual $Result.discovery.officialSource.urlMatched -Expected $expected.officialSourceUrlMatched
 }
 
 function ConvertTo-ProcessArgument {
@@ -215,7 +415,7 @@ function Invoke-ProbeCommand {
             }
             $process.CancelOutputRead()
             $process.CancelErrorRead()
-            return New-ProbeResult -Ok $false -ExitCode $null -TimedOut $true -Stdout $stdoutBuilder.ToString().Trim() -Stderr "命令超过 $TimeoutSeconds 秒未返回。"
+            return New-ProbeResult -Ok $false -ExitCode $null -TimedOut $true -Stdout $stdoutBuilder.ToString().Trim() -Stderr "命令超时 $TimeoutSeconds 秒未返回。"
         }
 
         $process.WaitForExit()
@@ -233,10 +433,8 @@ function Invoke-ProbeCommand {
 function Test-WingetSourceOutput {
     param([string] $SourceOutput)
 
-    if ([string]::IsNullOrWhiteSpace($SourceOutput)) {
-        return $false
-    }
-    return ($SourceOutput -match '(?im)^\s*winget\s+https://cdn\.winget\.microsoft\.com/cache(?:\s|$)')
+    $facts = Get-WingetSourceFacts -SourceOutput $SourceOutput
+    return [bool] ($facts.nameMatched -and $facts.urlMatched)
 }
 
 function Get-RealWingetDiscovery {
@@ -278,6 +476,16 @@ function Get-WingetDecision {
     }
 
     if (-not $Discovery.versionOk) {
+        if ($Discovery.versionTimedOut) {
+            return [pscustomobject] @{
+                status = 'command_timeout'
+                decision = 'repair'
+                reason = '已发现 winget.exe，但 winget --version 在超时时间内没有返回。'
+                nextAction = '当前样板只报告 repair 决策，不执行修复。'
+                exitCode = 0
+            }
+        }
+
         return [pscustomobject] @{
             status = 'command_broken'
             decision = 'repair'
@@ -288,11 +496,41 @@ function Get-WingetDecision {
     }
 
     if (-not $Discovery.sourceOk) {
+        if ($Discovery.sourceTimedOut) {
+            return [pscustomobject] @{
+                status = 'source_timeout'
+                decision = 'repair'
+                reason = 'winget 可运行，但 winget source list 在超时时间内没有返回。'
+                nextAction = '当前样板只报告 repair 决策，不执行 source 修复。'
+                exitCode = 0
+            }
+        }
+
+        if ($null -ne $Discovery.sourceExitCode -and $Discovery.sourceExitCode -ne 0) {
+            return [pscustomobject] @{
+                status = 'source_broken'
+                decision = 'repair'
+                reason = 'winget 可运行，但 winget source list 返回失败。'
+                nextAction = '当前样板只报告 repair 决策，不执行 source 修复。'
+                exitCode = 0
+            }
+        }
+
+        if ($Discovery.officialSource.nameMatched -and -not $Discovery.officialSource.urlMatched) {
+            return [pscustomobject] @{
+                status = 'source_untrusted'
+                decision = 'repair'
+                reason = 'winget source list 中存在 winget source，但 URL 不是项目认可的官方地址。'
+                nextAction = '当前样板只报告 repair 决策，不执行 source reset 或 add。'
+                exitCode = 0
+            }
+        }
+
         return [pscustomobject] @{
-            status = 'source_broken'
+            status = 'source_missing'
             decision = 'repair'
-            reason = 'winget 可运行，但 winget source list 未能确认官方 winget source 可用。'
-            nextAction = '当前样板只报告 repair 决策，不执行 source 修复。'
+            reason = 'winget 可运行，但 winget source list 未发现项目认可的官方 winget source。'
+            nextAction = '当前样板只报告 repair 决策，不执行 source 添加。'
             exitCode = 0
         }
     }
@@ -306,6 +544,45 @@ function Get-WingetDecision {
     }
 }
 
+function New-ExitCodeContract {
+    return [pscustomobject] @{
+        decision = $script:DecisionReportExitCode
+        helperFailure = $script:HelperFailureExitCode
+    }
+}
+
+function New-WingetDiagnosis {
+    param($Decision)
+
+    return [pscustomobject] @{
+        status = $Decision.status
+        reason = $Decision.reason
+    }
+}
+
+function New-WingetActionContract {
+    return [pscustomobject] @{
+        supported = $false
+        attempted = $false
+        mutationAllowed = [bool] $AllowMutation
+        reason = 'current checkpoint is report-only'
+    }
+}
+
+function New-WingetValidationContract {
+    return [pscustomobject] @{
+        contractOk = $true
+        violations = @()
+    }
+}
+
+function New-WingetAuditContract {
+    return [pscustomobject] @{
+        helper = 'winget.ps1'
+        resultPath = $ResultPath
+    }
+}
+
 function New-WingetResult {
     param(
         $Discovery,
@@ -313,41 +590,55 @@ function New-WingetResult {
     )
 
     return [pscustomobject] @{
+        contractVersion = $script:ContractVersion
         flow = $FlowName
         checkpoint = $CheckpointName
+        component = $script:ComponentName
         mutationAllowed = [bool] $AllowMutation
         sampleMode = $script:SampleMode
         actionMode = $script:ActionMode
         outputMode = $OutputMode
         testScenario = $TestScenario
         probeTimeoutSeconds = $script:ProbeTimeoutSeconds
-        exitCodeContract = "decision reports return 0; helper failures return $script:HelperFailureExitCode"
+        exitCodeContract = New-ExitCodeContract
         discovery = $Discovery
+        diagnosis = New-WingetDiagnosis -Decision $Decision
         decision = $Decision
+        action = New-WingetActionContract
+        validation = New-WingetValidationContract
+        audit = New-WingetAuditContract
     }
 }
 
 function New-HelperFailureResult {
     param([string] $Reason)
 
+    $decision = [pscustomobject] @{
+        status = 'helper_failed'
+        decision = 'abort'
+        reason = $Reason
+        nextAction = '查看辅助脚本失败信息，修复脚本或运行环境问题。'
+        exitCode = $script:HelperFailureExitCode
+    }
+
     return [pscustomobject] @{
+        contractVersion = $script:ContractVersion
         flow = $FlowName
         checkpoint = $CheckpointName
+        component = $script:ComponentName
         mutationAllowed = [bool] $AllowMutation
         sampleMode = $script:SampleMode
         actionMode = $script:ActionMode
         outputMode = $OutputMode
         testScenario = $TestScenario
         probeTimeoutSeconds = $script:ProbeTimeoutSeconds
-        exitCodeContract = "decision reports return 0; helper failures return $script:HelperFailureExitCode"
+        exitCodeContract = New-ExitCodeContract
         discovery = $null
-        decision = [pscustomobject] @{
-            status = 'helper_failed'
-            decision = 'abort'
-            reason = $Reason
-            nextAction = '请查看 helper failure 输出并修复脚本自身问题。'
-            exitCode = $script:HelperFailureExitCode
-        }
+        diagnosis = New-WingetDiagnosis -Decision $decision
+        decision = $decision
+        action = New-WingetActionContract
+        validation = New-WingetValidationContract
+        audit = New-WingetAuditContract
     }
 }
 
@@ -355,15 +646,18 @@ function Write-WingetTextResult {
     param($Result)
 
     Write-Host '[winget checkpoint]'
+    Write-Field 'contractVersion' $Result.contractVersion
     Write-Field 'flow' $Result.flow
     Write-Field 'checkpoint' $Result.checkpoint
+    Write-Field 'component' $Result.component
     Write-Field 'mutationAllowed' ([string] $Result.mutationAllowed)
     Write-Field 'sampleMode' $Result.sampleMode
     Write-Field 'actionMode' $Result.actionMode
     Write-Field 'outputMode' $Result.outputMode
     Write-Field 'testScenario' $Result.testScenario
     Write-Field 'probeTimeoutSeconds' ([string] $Result.probeTimeoutSeconds)
-    Write-Field 'exitCodeContract' $Result.exitCodeContract
+    Write-Field 'decisionExitCode' ([string] $Result.exitCodeContract.decision)
+    Write-Field 'helperFailureExitCode' ([string] $Result.exitCodeContract.helperFailure)
     Write-Host '当前样板只做发现、诊断和决策，不会安装、修复或改写系统。'
 
     if ($null -ne $Result.discovery) {
@@ -376,6 +670,13 @@ function Write-WingetTextResult {
         Write-Field 'sourceOk' ([string] $Result.discovery.sourceOk)
         Write-Field 'sourceTimedOut' ([string] $Result.discovery.sourceTimedOut)
         Write-Field 'sourceHasWinget' ([string] $Result.discovery.sourceHasWinget)
+        Write-Field 'isAdmin' ([string] $Result.discovery.environment.isAdmin)
+        Write-Field 'languageMode' $Result.discovery.environment.languageMode
+        Write-Field 'isWindowsAppsPath' ([string] $Result.discovery.command.isWindowsAppsPath)
+        Write-Field 'officialSourceFound' ([string] $Result.discovery.officialSource.found)
+        Write-Field 'officialSourceNameMatched' ([string] $Result.discovery.officialSource.nameMatched)
+        Write-Field 'officialSourceUrlMatched' ([string] $Result.discovery.officialSource.urlMatched)
+        Write-Field 'officialSourceActualUrl' $Result.discovery.officialSource.actualUrl
 
         if (-not [string]::IsNullOrWhiteSpace($Result.discovery.versionError)) {
             Write-Field 'versionError' $Result.discovery.versionError
@@ -385,11 +686,24 @@ function Write-WingetTextResult {
         }
     }
 
+    Write-Section 'diagnosis'
+    Write-Field 'status' $Result.diagnosis.status
+    Write-Field 'reason' $Result.diagnosis.reason
+
     Write-Section 'decision'
     Write-Field 'status' $Result.decision.status
     Write-Field 'decision' $Result.decision.decision
     Write-Field 'reason' $Result.decision.reason
     Write-Field 'nextAction' $Result.decision.nextAction
+
+    Write-Section 'action'
+    Write-Field 'supported' ([string] $Result.action.supported)
+    Write-Field 'attempted' ([string] $Result.action.attempted)
+    Write-Field 'mutationAllowed' ([string] $Result.action.mutationAllowed)
+    Write-Field 'reason' $Result.action.reason
+
+    Write-Section 'validation'
+    Write-Field 'contractOk' ([string] $Result.validation.contractOk)
     Write-Host ''
 }
 
@@ -399,8 +713,51 @@ function Test-ResultContract {
     if ($null -eq $Result) {
         throw 'winget result contract violation: result is null'
     }
+    if ($Result.contractVersion -ne $script:ContractVersion) {
+        throw 'winget result contract violation: unsupported contract version'
+    }
+    if ($Result.component -ne $script:ComponentName) {
+        throw 'winget result contract violation: unsupported component'
+    }
+    if ($null -eq $Result.exitCodeContract) {
+        throw 'winget result contract violation: exit code contract is null'
+    }
+    if ($Result.exitCodeContract.decision -ne $script:DecisionReportExitCode) {
+        throw 'winget result contract violation: decision exit code contract must be 0'
+    }
+    if ($Result.exitCodeContract.helperFailure -ne $script:HelperFailureExitCode) {
+        throw 'winget result contract violation: helper failure exit code contract must be 70'
+    }
+    if ($null -eq $Result.diagnosis) {
+        throw 'winget result contract violation: diagnosis is null'
+    }
     if ($null -eq $Result.decision) {
         throw 'winget result contract violation: decision is null'
+    }
+    if ($null -eq $Result.action) {
+        throw 'winget result contract violation: action is null'
+    }
+    if ($Result.action.supported -ne $false -or $Result.action.attempted -ne $false) {
+        throw 'winget result contract violation: report-only action must not be supported or attempted'
+    }
+    if ($null -eq $Result.validation) {
+        throw 'winget result contract violation: validation is null'
+    }
+    if ($Result.validation.contractOk -ne $true) {
+        throw 'winget result contract violation: validation contractOk must be true before output'
+    }
+    if ($null -eq $Result.audit) {
+        throw 'winget result contract violation: audit is null'
+    }
+    if ($Result.decision.status -ne 'helper_failed') {
+        if ($null -eq $Result.discovery) {
+            throw 'winget result contract violation: discovery is null'
+        }
+        foreach ($section in @('environment', 'command', 'versionProbe', 'sourceProbe', 'officialSource')) {
+            if ($null -eq $Result.discovery.$section) {
+                throw "winget result contract violation: discovery.$section is null"
+            }
+        }
     }
     if ($script:AllowedStatuses -notcontains $Result.decision.status) {
         throw "winget result contract violation: unsupported status '$($Result.decision.status)'"
@@ -442,6 +799,11 @@ function Write-WingetResultFile {
     }
 
     try {
+        $projectLocalRoot = Get-ProjectLocalRoot
+        if (-not (Test-PathInsideRoot -Path $ResultPath -Root $projectLocalRoot)) {
+            throw "winget result path must stay under $projectLocalRoot"
+        }
+
         $parentPath = Split-Path -Parent $ResultPath
         if (-not [string]::IsNullOrWhiteSpace($parentPath) -and -not (Test-Path -LiteralPath $parentPath -PathType Container)) {
             New-Item -ItemType Directory -Path $parentPath -Force | Out-Null
@@ -461,6 +823,7 @@ function Write-WingetResult {
     )
 
     Test-ResultContract -Result $Result
+    Test-TestScenarioContract -Result $Result
     if (-not $SkipResultFile) {
         Write-WingetResultFile -Result $Result
     }

@@ -128,7 +128,7 @@
     },
     {
       "path": "lib/windows/git.ps1",
-      "sha256": "c7e2482e21933c8d84f68508104697927c39c70d8e62c3d70c188f0ee56a55da",
+      "sha256": "8d41e205277e5bc89138e7b16037efc978372c1c27c394508fd92128af71adbb",
       "required": true
     },
     {
@@ -153,7 +153,7 @@
     },
     {
       "path": "lib/windows/winget.ps1",
-      "sha256": "996810c48d6ef8972a7b330fa6f1742b482355c1278cd9aa47fd6f2415b67fe5",
+      "sha256": "159407278b9ead512b48a27d2c4b5a9852d961456c8674b33890f0677c0c0b12",
       "required": true
     },
     {
