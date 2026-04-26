@@ -322,10 +322,14 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($wingetHelper.Contains('Register-ObjectEvent')) 'winget.ps1 captures async probe output in Windows PowerShell 5.1'
         Need ($wingetHelper.Contains('-TimedOut $true')) 'winget.ps1 reports probe timeout state'
         Need ($wingetHelper.Contains('function Test-WingetSourceOutput')) 'winget.ps1 validates winget source output'
+        Need ($wingetHelper.Contains('function Get-AppxDeploymentFacts')) 'winget.ps1 reports Appx deployment repair facts'
+        Need ($wingetHelper.Contains('Get-Command Add-AppxPackage')) 'winget.ps1 probes Add-AppxPackage availability'
+        Need ($wingetHelper.Contains('Get-Service AppXSvc')) 'winget.ps1 probes AppXSvc availability'
+        Need ($wingetHelper.Contains('repairLikelySupported')) 'winget.ps1 reports whether App Installer repair is likely supported'
         Need ($wingetHelper.Contains('https://cdn.winget.microsoft.com/cache')) 'winget.ps1 requires the official winget source URL'
         Need ($wingetHelper.Contains('sourceHasWinget')) 'winget.ps1 reports official winget source presence'
         Need ($wingetHelper.Contains('officialSource')) 'winget.ps1 reports official source trust facts'
-        Need ($wingetHelper.Contains('environment') -and $wingetHelper.Contains('versionProbe') -and $wingetHelper.Contains('sourceProbe')) 'winget.ps1 reports structured discovery facts'
+        Need ($wingetHelper.Contains('environment') -and $wingetHelper.Contains('versionProbe') -and $wingetHelper.Contains('sourceProbe') -and $wingetHelper.Contains('appxDeployment')) 'winget.ps1 reports structured discovery facts'
         Need ($wingetHelper.Contains('HelperFailureExitCode = 70')) 'winget.ps1 separates helper failure exit code'
         Need ($wingetHelper.Contains('DependencyBlockerExitCode = 60')) 'winget.ps1 locks dependency blocker exit code'
         Need ($wingetHelper.Contains('dependencyBlocker')) 'winget.ps1 reports dependency blocker exit code contract'
@@ -339,7 +343,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($wingetHelper.Contains('actionMode')) 'winget.ps1 reports action boundary'
         Need ($wingetHelper.Contains('AllowedStatuses')) 'winget.ps1 locks status enum contract'
         Need ($wingetHelper.Contains('AllowedDecisions')) 'winget.ps1 locks decision enum contract'
-        foreach ($status in @('healthy', 'missing', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')) {
+        foreach ($status in @('healthy', 'missing', 'appx_deployment_unavailable', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')) {
             Need ($wingetHelper.Contains("'$status'")) "winget.ps1 status enum includes $status"
         }
         Need ($wingetHelper.Contains('DecisionReportExitCode = 0')) 'winget.ps1 locks healthy exit code'
@@ -361,7 +365,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($wingetHelper.Contains('function Get-TestScenarioExpectation')) 'winget.ps1 locks deterministic scenario expectations'
         Need ($wingetHelper.Contains('function Test-TestScenarioContract')) 'winget.ps1 validates deterministic scenario contracts'
         Need ($wingetHelper.Contains('function Assert-EqualValue')) 'winget.ps1 fails fast on scenario contract drift'
-        foreach ($scenario in @('healthy', 'missing', 'version_failed', 'version_timeout', 'source_failed', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')) {
+        foreach ($scenario in @('healthy', 'missing', 'appx_unavailable', 'version_failed', 'version_timeout', 'source_failed', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')) {
             Need ($wingetHelper.Contains("'$scenario'")) "winget.ps1 test scenarios include $scenario"
         }
         Need ($wingetHelper.Contains("status = 'command_broken'")) 'winget.ps1 maps version_failed to command_broken'
@@ -409,6 +413,12 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($downloadHelper.Contains('ExpectedSha256')) 'download.ps1 requires expected sha256 for real downloads'
         Need ($downloadHelper.Contains('AllowedHosts')) 'download.ps1 requires an allowed host list for real downloads'
         Need ($downloadHelper.Contains('AllowDownload')) 'download.ps1 keeps real download behind explicit opt-in'
+        Need ($downloadHelper.Contains('metadataComplete')) 'download.ps1 reports whether source metadata is complete'
+        Need ($downloadHelper.Contains('downloadEnabled')) 'download.ps1 reports whether real download is enabled'
+        Need ($downloadHelper.Contains('expectedSha256Valid')) 'download.ps1 reports expected sha256 validity'
+        Need ($downloadHelper.Contains('expectedSha256Normalized')) 'download.ps1 reports normalized expected sha256'
+        Need ($downloadHelper.Contains('Test-DownloadMetadataComplete')) 'download.ps1 centralizes metadata completeness checks'
+        Need ($downloadHelper.Contains('download metadata incomplete')) 'download.ps1 blocks real download when metadata is incomplete'
         Need ($downloadHelper.Contains('Invoke-WebRequest')) 'download.ps1 performs bounded HTTP download'
         Need ($downloadHelper.Contains('TimeoutSec')) 'download.ps1 passes timeout to download command'
         Need ($downloadHelper.Contains('Get-Sha256Hex')) 'download.ps1 verifies downloaded file hash'
@@ -534,6 +544,11 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($wingetJson.exitCodeContract.healthy -eq 0) 'winget checkpoint reports healthy exit code contract'
         Need ($wingetJson.exitCodeContract.dependencyBlocker -eq 60) 'winget checkpoint reports dependency blocker exit code contract'
         Need ($wingetJson.exitCodeContract.helperFailure -eq 70) 'winget checkpoint reports helper failure exit code contract'
+        Need ($null -ne $wingetJson.discovery.appxDeployment) 'winget checkpoint reports Appx deployment facts'
+        Need ($null -ne $wingetJson.discovery.appxDeployment.addAppxPackageFound) 'winget checkpoint reports Add-AppxPackage availability'
+        Need ($null -ne $wingetJson.discovery.appxDeployment.appxServiceFound) 'winget checkpoint reports AppXSvc availability'
+        Need ($null -ne $wingetJson.discovery.appxDeployment.osBuildSupported) 'winget checkpoint reports Appx OS build support'
+        Need ($null -ne $wingetJson.discovery.appxDeployment.repairLikelySupported) 'winget checkpoint reports repair likelihood'
     }
 
     $gitJson = Invoke-CheckpointJson -Path $gitCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'healthy') -ExpectedExitCode 0
@@ -549,12 +564,77 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($downloadJson.component -eq 'download') 'download checkpoint runner preserves component'
         Need ($downloadJson.checkpoint -eq 'app-installer-download') 'download checkpoint runner preserves checkpoint name'
         Need ($downloadJson.artifactKind -eq 'AppInstaller') 'download checkpoint runner preserves artifact kind'
+        Need ($downloadJson.source.metadataComplete -eq $false) 'download planned scenario reports incomplete metadata'
+        Need ($downloadJson.source.downloadEnabled -eq $false) 'download planned scenario keeps real download disabled'
+        Need ($downloadJson.source.expectedSha256Present -eq $false) 'download planned scenario has no fake expected sha256'
+        Need ($downloadJson.source.expectedSha256Valid -eq $false) 'download planned scenario has no valid expected sha256'
+        Need ($null -eq $downloadJson.source.expectedSha256Normalized) 'download planned scenario has no normalized expected sha256'
+    }
+
+    $downloadBlockedJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-AllowDownload') -ExpectedExitCode 60
+    if ($null -ne $downloadBlockedJson) {
+        Need ($downloadBlockedJson.decision.status -eq 'source_blocked') 'download checkpoint blocks AllowDownload when metadata is incomplete'
+        Need ($downloadBlockedJson.decision.exitCode -eq 60) 'download checkpoint reports incomplete metadata as blocker exit code'
+        Need ($downloadBlockedJson.source.metadataComplete -eq $false) 'download blocked scenario reports incomplete metadata'
+        Need ($downloadBlockedJson.source.downloadEnabled -eq $false) 'download blocked scenario keeps download disabled'
+        Need ($downloadBlockedJson.source.https -eq $false) 'download blocked scenario reports missing HTTPS source'
+        Need ($downloadBlockedJson.source.hostAllowed -eq $false) 'download blocked scenario reports missing allowed host'
+    }
+
+    $downloadSha = 'A' * 64
+    $downloadCompleteMetadataJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'downloaded', '-AllowDownload', '-AllowedHosts', 'example.invalid', '-ExpectedSha256', $downloadSha) -ExpectedExitCode 0
+    if ($null -ne $downloadCompleteMetadataJson) {
+        Need ($downloadCompleteMetadataJson.source.metadataComplete -eq $true) 'download checkpoint treats HTTPS allowed host and valid sha256 as complete metadata'
+        Need ($downloadCompleteMetadataJson.source.downloadEnabled -eq $true) 'download checkpoint enables download only when AllowDownload and metadata are complete'
+        Need ($downloadCompleteMetadataJson.source.expectedSha256Normalized -eq $downloadSha.ToLowerInvariant()) 'download checkpoint normalizes expected sha256 to lowercase'
+    }
+
+    $downloadHttpBlockedJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-AllowDownload', '-Uri', 'http://example.invalid/app-installer.msixbundle', '-AllowedHosts', 'example.invalid', '-ExpectedSha256', $downloadSha) -ExpectedExitCode 60
+    if ($null -ne $downloadHttpBlockedJson) {
+        Need ($downloadHttpBlockedJson.decision.status -eq 'source_blocked') 'download checkpoint blocks non-HTTPS source before download'
+        Need ($downloadHttpBlockedJson.source.https -eq $false) 'download checkpoint reports non-HTTPS source fact'
+        Need ($downloadHttpBlockedJson.source.hostAllowed -eq $true) 'download checkpoint keeps host fact separate from HTTPS fact'
+        Need ($downloadHttpBlockedJson.source.metadataComplete -eq $false) 'download checkpoint does not treat HTTP source as complete metadata'
+        Need ($downloadHttpBlockedJson.source.downloadEnabled -eq $false) 'download checkpoint keeps HTTP source disabled'
+    }
+
+    $downloadHostBlockedJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-AllowDownload', '-Uri', 'https://example.invalid/app-installer.msixbundle', '-AllowedHosts', 'downloads.example.invalid', '-ExpectedSha256', $downloadSha) -ExpectedExitCode 60
+    if ($null -ne $downloadHostBlockedJson) {
+        Need ($downloadHostBlockedJson.decision.status -eq 'source_blocked') 'download checkpoint blocks host mismatch before download'
+        Need ($downloadHostBlockedJson.source.https -eq $true) 'download checkpoint keeps HTTPS fact separate from host fact'
+        Need ($downloadHostBlockedJson.source.hostAllowed -eq $false) 'download checkpoint reports host mismatch fact'
+        Need ($downloadHostBlockedJson.source.metadataComplete -eq $false) 'download checkpoint does not treat host mismatch as complete metadata'
+        Need ($downloadHostBlockedJson.source.downloadEnabled -eq $false) 'download checkpoint keeps host mismatch disabled'
+    }
+
+    foreach ($downloadScenario in @(
+        @{ name = 'source_blocked'; decision = 'abort' },
+        @{ name = 'download_failed'; decision = 'retry' },
+        @{ name = 'hash_mismatch'; decision = 'abort' }
+    )) {
+        $downloadScenarioJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', $downloadScenario.name) -ExpectedExitCode 60
+        if ($null -ne $downloadScenarioJson) {
+            Need ($downloadScenarioJson.decision.status -eq $downloadScenario.name) "download checkpoint blocks $($downloadScenario.name) scenario"
+            Need ($downloadScenarioJson.decision.decision -eq $downloadScenario.decision) "download checkpoint reports expected decision for $($downloadScenario.name)"
+            Need ($downloadScenarioJson.decision.exitCode -eq 60) "download checkpoint reports blocker exit code for $($downloadScenario.name)"
+            Need ($downloadScenarioJson.source.metadataComplete -eq $false) "download checkpoint reports incomplete metadata for $($downloadScenario.name)"
+            Need ($downloadScenarioJson.source.downloadEnabled -eq $false) "download checkpoint keeps download disabled for $($downloadScenario.name)"
+        }
     }
 
     $wingetMissingJson = Invoke-CheckpointJson -Path $wingetCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'missing') -ExpectedExitCode 60
     if ($null -ne $wingetMissingJson) {
         Need ($wingetMissingJson.decision.status -eq 'missing') 'winget checkpoint blocks missing dependency state'
         Need ($wingetMissingJson.decision.exitCode -eq 60) 'winget checkpoint reports missing as dependency blocker exit code'
+        Need ($wingetMissingJson.discovery.appxDeployment.repairLikelySupported -eq $true) 'winget missing scenario reports Appx repair likely supported'
+    }
+
+    $wingetAppxUnavailableJson = Invoke-CheckpointJson -Path $wingetCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'appx_unavailable') -ExpectedExitCode 60
+    if ($null -ne $wingetAppxUnavailableJson) {
+        Need ($wingetAppxUnavailableJson.decision.status -eq 'appx_deployment_unavailable') 'winget checkpoint blocks missing winget when Appx deployment is unavailable'
+        Need ($wingetAppxUnavailableJson.decision.decision -eq 'abort') 'winget checkpoint aborts when Appx deployment is unavailable'
+        Need ($wingetAppxUnavailableJson.decision.exitCode -eq 60) 'winget checkpoint reports Appx deployment unavailable as dependency blocker exit code'
+        Need ($wingetAppxUnavailableJson.discovery.appxDeployment.repairLikelySupported -eq $false) 'winget appx_unavailable scenario reports Appx repair unsupported'
     }
 
     $wingetSourceUntrustedJson = Invoke-CheckpointJson -Path $wingetCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'source_untrusted') -ExpectedExitCode 60
@@ -579,12 +659,6 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     if ($null -ne $gitPathUntrustedJson) {
         Need ($gitPathUntrustedJson.decision.status -eq 'identity_untrusted') 'Git checkpoint blocks untrusted identity state'
         Need ($gitPathUntrustedJson.decision.exitCode -eq 60) 'Git checkpoint reports untrusted identity as dependency blocker exit code'
-    }
-
-    $downloadFailureJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'hash_mismatch') -ExpectedExitCode 60
-    if ($null -ne $downloadFailureJson) {
-        Need ($downloadFailureJson.decision.status -eq 'hash_mismatch') 'download checkpoint runner propagates business failure status'
-        Need ($downloadFailureJson.decision.exitCode -eq 60) 'download checkpoint runner propagates business failure exit code in JSON'
     }
 
     $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1
@@ -635,3 +709,4 @@ if ($script:Failed) {
 }
 
 Write-Host 'Windows startup self-check passed.'
+exit 0

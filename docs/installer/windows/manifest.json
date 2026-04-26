@@ -118,7 +118,7 @@
     },
     {
       "path": "lib/windows/download.ps1",
-      "sha256": "57134b2dba101b4a1a0a9c3458d5a18d3a425b01c0c0ea7a6d43e1893b8a073c",
+      "sha256": "6e9b9759ee55694b84ef24de368efa75600a44a3937ead462596b0eec4c6f02e",
       "required": true
     },
     {
@@ -153,7 +153,7 @@
     },
     {
       "path": "lib/windows/winget.ps1",
-      "sha256": "7e7a0bb0de89de1232b8a3132463e169bb640e01643cb9d09f6d8698be413d42",
+      "sha256": "068d8a9bcfd4fe97f7f2d4d1ad75d72ee3e6d95ec069696824d864532336b988",
       "required": true
     },
     {

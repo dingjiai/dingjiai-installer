@@ -4,7 +4,7 @@
     [switch] $AllowMutation,
     [ValidateSet('Text', 'Json')]
     [string] $OutputMode = 'Text',
-    [ValidateSet('none', 'healthy', 'missing', 'version_failed', 'version_timeout', 'source_failed', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')]
+    [ValidateSet('none', 'healthy', 'missing', 'appx_unavailable', 'version_failed', 'version_timeout', 'source_failed', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')]
     [string] $TestScenario = 'none',
     [string] $ResultPath
 )
@@ -18,7 +18,7 @@ $script:ProbeTimeoutSeconds = 15
 $script:HelperFailureExitCode = 70
 $script:SampleMode = 'discovery-diagnose-decision-only'
 $script:ActionMode = 'report-only'
-$script:AllowedStatuses = @('healthy', 'missing', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')
+$script:AllowedStatuses = @('healthy', 'missing', 'appx_deployment_unavailable', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')
 $script:AllowedDecisions = @('skip', 'install', 'repair', 'abort')
 $script:DecisionReportExitCode = 0
 $script:DependencyBlockerExitCode = 60
@@ -115,6 +115,48 @@ function Test-PathInsideRoot {
     return $normalizedPath.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-AppxDeploymentFacts {
+    $addAppxPackage = Get-Command Add-AppxPackage -ErrorAction SilentlyContinue
+    $appxService = Get-Service AppXSvc -ErrorAction SilentlyContinue
+    $osBuild = [Environment]::OSVersion.Version.Build
+    $architecture = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
+    $appxServiceFound = ($null -ne $appxService)
+    $addAppxPackageFound = ($null -ne $addAppxPackage)
+    $osBuildSupported = ($osBuild -ge 17763)
+
+    return [pscustomobject] @{
+        addAppxPackageFound = $addAppxPackageFound
+        appxServiceFound = $appxServiceFound
+        appxServiceStatus = if ($appxServiceFound) { $appxService.Status.ToString() } else { $null }
+        osBuild = $osBuild
+        osBuildSupported = $osBuildSupported
+        architecture = $architecture
+        repairLikelySupported = ($addAppxPackageFound -and $appxServiceFound -and $osBuildSupported -and [Environment]::Is64BitOperatingSystem)
+    }
+}
+
+function New-AppxDeploymentFacts {
+    param(
+        [bool] $AddAppxPackageFound,
+        [bool] $AppxServiceFound,
+        [string] $AppxServiceStatus,
+        [int] $OsBuild,
+        [bool] $OsBuildSupported,
+        [string] $Architecture,
+        [bool] $RepairLikelySupported
+    )
+
+    return [pscustomobject] @{
+        addAppxPackageFound = $AddAppxPackageFound
+        appxServiceFound = $AppxServiceFound
+        appxServiceStatus = $AppxServiceStatus
+        osBuild = $OsBuild
+        osBuildSupported = $OsBuildSupported
+        architecture = $Architecture
+        repairLikelySupported = $RepairLikelySupported
+    }
+}
+
 function Get-WingetSourceFacts {
     param([string] $SourceOutput)
 
@@ -171,10 +213,12 @@ function New-WingetDiscovery {
         [bool] $SourceTimedOut,
         [bool] $SourceHasWinget,
         [string] $SourceError,
-        [string] $SourceOutput
+        [string] $SourceOutput,
+        $AppxDeployment
     )
 
     $officialSource = Get-WingetSourceFacts -SourceOutput $SourceOutput
+    $appxDeployment = if ($null -ne $AppxDeployment) { $AppxDeployment } else { Get-AppxDeploymentFacts }
 
     return [pscustomobject] @{
         commandFound = $CommandFound
@@ -221,6 +265,7 @@ function New-WingetDiscovery {
             stderr = $SourceError
         }
         officialSource = $officialSource
+        appxDeployment = $appxDeployment
     }
 }
 
@@ -232,7 +277,10 @@ function Get-TestWingetDiscovery {
             return New-WingetDiscovery -CommandFound $true -CommandPath 'C:\Test\winget.exe' -VersionOk $true -Version 'v1.0.0-test' -VersionExitCode 0 -VersionTimedOut $false -VersionError $null -SourceOk $true -SourceExitCode 0 -SourceTimedOut $false -SourceHasWinget $true -SourceError $null -SourceOutput 'winget https://cdn.winget.microsoft.com/cache'
         }
         'missing' {
-            return New-WingetDiscovery -CommandFound $false -CommandPath $null -VersionOk $false -Version $null -VersionExitCode $null -VersionTimedOut $false -VersionError $null -SourceOk $false -SourceExitCode $null -SourceTimedOut $false -SourceHasWinget $false -SourceError $null -SourceOutput $null
+            return New-WingetDiscovery -CommandFound $false -CommandPath $null -VersionOk $false -Version $null -VersionExitCode $null -VersionTimedOut $false -VersionError $null -SourceOk $false -SourceExitCode $null -SourceTimedOut $false -SourceHasWinget $false -SourceError $null -SourceOutput $null -AppxDeployment (New-AppxDeploymentFacts -AddAppxPackageFound $true -AppxServiceFound $true -AppxServiceStatus 'Running' -OsBuild 17763 -OsBuildSupported $true -Architecture 'x64' -RepairLikelySupported $true)
+        }
+        'appx_unavailable' {
+            return New-WingetDiscovery -CommandFound $false -CommandPath $null -VersionOk $false -Version $null -VersionExitCode $null -VersionTimedOut $false -VersionError $null -SourceOk $false -SourceExitCode $null -SourceTimedOut $false -SourceHasWinget $false -SourceError $null -SourceOutput $null -AppxDeployment (New-AppxDeploymentFacts -AddAppxPackageFound $false -AppxServiceFound $false -AppxServiceStatus $null -OsBuild 17762 -OsBuildSupported $false -Architecture 'x64' -RepairLikelySupported $false)
         }
         'version_failed' {
             return New-WingetDiscovery -CommandFound $true -CommandPath 'C:\Test\winget.exe' -VersionOk $false -Version $null -VersionExitCode 1 -VersionTimedOut $false -VersionError 'simulated version failure' -SourceOk $false -SourceExitCode $null -SourceTimedOut $false -SourceHasWinget $false -SourceError $null -SourceOutput $null
@@ -265,7 +313,10 @@ function Get-TestScenarioExpectation {
             return [pscustomobject] @{ status = 'healthy'; decision = 'skip'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $true; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $true; officialSourceNameMatched = $true; officialSourceUrlMatched = $true }
         }
         'missing' {
-            return [pscustomobject] @{ status = 'missing'; decision = 'install'; exitCode = $script:DependencyBlockerExitCode; commandFound = $false; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'missing'; decision = 'install'; exitCode = $script:DependencyBlockerExitCode; commandFound = $false; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false; appxRepairLikelySupported = $true }
+        }
+        'appx_unavailable' {
+            return [pscustomobject] @{ status = 'appx_deployment_unavailable'; decision = 'abort'; exitCode = $script:DependencyBlockerExitCode; commandFound = $false; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false; appxRepairLikelySupported = $false }
         }
         'version_failed' {
             return [pscustomobject] @{ status = 'command_broken'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
@@ -322,6 +373,9 @@ function Test-TestScenarioContract {
     Assert-EqualValue -Name 'discovery.officialSource.found' -Actual $Result.discovery.officialSource.found -Expected $expected.officialSourceFound
     Assert-EqualValue -Name 'discovery.officialSource.nameMatched' -Actual $Result.discovery.officialSource.nameMatched -Expected $expected.officialSourceNameMatched
     Assert-EqualValue -Name 'discovery.officialSource.urlMatched' -Actual $Result.discovery.officialSource.urlMatched -Expected $expected.officialSourceUrlMatched
+    if ($null -ne $expected.PSObject.Properties['appxRepairLikelySupported']) {
+        Assert-EqualValue -Name 'discovery.appxDeployment.repairLikelySupported' -Actual $Result.discovery.appxDeployment.repairLikelySupported -Expected $expected.appxRepairLikelySupported
+    }
 }
 
 function ConvertTo-ProcessArgument {
@@ -467,11 +521,21 @@ function Get-WingetDecision {
     param($Discovery)
 
     if (-not $Discovery.commandFound) {
+        if (-not $Discovery.appxDeployment.repairLikelySupported) {
+            return [pscustomobject] @{
+                status = 'appx_deployment_unavailable'
+                decision = 'abort'
+                reason = '未发现 winget.exe，且当前系统缺少 Windows 应用部署能力，无法自动安装 winget。'
+                nextAction = '建议使用纯净版 Windows，或手动修复 Appx/App Installer 组件后重试。'
+                exitCode = $script:DependencyBlockerExitCode
+            }
+        }
+
         return [pscustomobject] @{
             status = 'missing'
             decision = 'install'
-            reason = '未发现 winget.exe，后续版本应进入 App Installer 安装路径。'
-            nextAction = '当前样板只报告 install 决策，不执行安装。'
+            reason = '未发现 winget.exe，但当前系统具备 App Installer 修复基础能力。'
+            nextAction = '后续版本可进入 App Installer 依赖下载与安装路径；当前样板不执行安装。'
             exitCode = $script:DependencyBlockerExitCode
         }
     }
@@ -680,6 +744,10 @@ function Write-WingetTextResult {
         Write-Field 'officialSourceNameMatched' ([string] $Result.discovery.officialSource.nameMatched)
         Write-Field 'officialSourceUrlMatched' ([string] $Result.discovery.officialSource.urlMatched)
         Write-Field 'officialSourceActualUrl' $Result.discovery.officialSource.actualUrl
+        Write-Field 'addAppxPackageFound' ([string] $Result.discovery.appxDeployment.addAppxPackageFound)
+        Write-Field 'appxServiceFound' ([string] $Result.discovery.appxDeployment.appxServiceFound)
+        Write-Field 'appxServiceStatus' $Result.discovery.appxDeployment.appxServiceStatus
+        Write-Field 'appxRepairLikelySupported' ([string] $Result.discovery.appxDeployment.repairLikelySupported)
 
         if (-not [string]::IsNullOrWhiteSpace($Result.discovery.versionError)) {
             Write-Field 'versionError' $Result.discovery.versionError
@@ -759,7 +827,7 @@ function Test-ResultContract {
         if ($null -eq $Result.discovery) {
             throw 'winget result contract violation: discovery is null'
         }
-        foreach ($section in @('environment', 'command', 'versionProbe', 'sourceProbe', 'officialSource')) {
+        foreach ($section in @('environment', 'command', 'versionProbe', 'sourceProbe', 'officialSource', 'appxDeployment')) {
             if ($null -eq $Result.discovery.$section) {
                 throw "winget result contract violation: discovery.$section is null"
             }

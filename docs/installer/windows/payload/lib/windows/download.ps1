@@ -277,18 +277,51 @@ function Test-AllowedHost {
     return ((ConvertTo-NormalizedHostList -Hosts $Hosts) -contains $normalizedHost)
 }
 
+function Get-NormalizedExpectedSha256 {
+    if (Test-Sha256Text -Value $ExpectedSha256) {
+        return $ExpectedSha256.ToLowerInvariant()
+    }
+    return $null
+}
+
+function Test-DownloadMetadataComplete {
+    param($Source)
+
+    return (
+        $null -ne $Source -and
+        -not [string]::IsNullOrWhiteSpace($Source.uri) -and
+        $Source.https -eq $true -and
+        $Source.hostAllowed -eq $true -and
+        $AllowedHosts.Count -gt 0 -and
+        -not [string]::IsNullOrWhiteSpace((Get-NormalizedExpectedSha256))
+    )
+}
+
+function Add-DownloadMetadataFields {
+    param($Source)
+
+    $normalizedExpectedSha256 = Get-NormalizedExpectedSha256
+    $metadataComplete = Test-DownloadMetadataComplete -Source $Source
+    $Source | Add-Member -NotePropertyName metadataComplete -NotePropertyValue $metadataComplete -Force
+    $Source | Add-Member -NotePropertyName downloadEnabled -NotePropertyValue ([bool] ($AllowDownload -and $metadataComplete)) -Force
+    $Source | Add-Member -NotePropertyName expectedSha256Present -NotePropertyValue (-not [string]::IsNullOrWhiteSpace($ExpectedSha256)) -Force
+    $Source | Add-Member -NotePropertyName expectedSha256Valid -NotePropertyValue (-not [string]::IsNullOrWhiteSpace($normalizedExpectedSha256)) -Force
+    $Source | Add-Member -NotePropertyName expectedSha256Normalized -NotePropertyValue $normalizedExpectedSha256 -Force
+    return $Source
+}
+
 function Get-SourceInfo {
     param([string] $SourceUri)
 
     $parsedUri = $null
     $isValid = [System.Uri]::TryCreate($SourceUri, [System.UriKind]::Absolute, [ref] $parsedUri)
     if (-not $isValid -or $null -eq $parsedUri) {
-        return New-DownloadSource -SourceUri $SourceUri -SourceHost $null -AllowedHostList $AllowedHosts -Https $false -HostAllowed $false
+        return Add-DownloadMetadataFields -Source (New-DownloadSource -SourceUri $SourceUri -SourceHost $null -AllowedHostList $AllowedHosts -Https $false -HostAllowed $false)
     }
 
     $https = $parsedUri.Scheme -eq 'https'
     $hostAllowed = Test-AllowedHost -SourceHost $parsedUri.Host -Hosts $AllowedHosts
-    return New-DownloadSource -SourceUri $SourceUri -SourceHost $parsedUri.Host -AllowedHostList $AllowedHosts -Https $https -HostAllowed $hostAllowed
+    return Add-DownloadMetadataFields -Source (New-DownloadSource -SourceUri $SourceUri -SourceHost $parsedUri.Host -AllowedHostList $AllowedHosts -Https $https -HostAllowed $hostAllowed)
 }
 
 function Invoke-FileDownload {
@@ -371,9 +404,9 @@ function Invoke-RealDownloadDiscovery {
     }
 
     $source = Get-SourceInfo -SourceUri $Uri
-    if ([string]::IsNullOrWhiteSpace($Uri) -or [string]::IsNullOrWhiteSpace($ExpectedSha256) -or $AllowedHosts.Count -eq 0) {
-        $download = New-DownloadState -Root (Get-DefaultStagingRoot) -Path $null -Bytes $null -Sha256 $null -Attempts 0 -TimedOut $false -Error 'missing uri, expected sha256, or allowed hosts'
-        $decision = New-DownloadDecision -Status 'missing_metadata' -Decision 'abort' -Reason '真实下载必须同时提供 HTTPS URL、允许 host 和 expected sha256。' -NextAction '补齐下载元数据后重试；不要下载未锁定 hash 的产物。' -ExitCode $script:DownloadFailureExitCode
+    if (-not $source.metadataComplete) {
+        $download = New-DownloadState -Root (Get-DefaultStagingRoot) -Path $null -Bytes $null -Sha256 $null -Attempts 0 -TimedOut $false -Error 'download metadata incomplete'
+        $decision = New-DownloadDecision -Status 'source_blocked' -Decision 'abort' -Reason '真实下载必须先补齐 URL、允许 host 和 64 位 expected sha256。' -NextAction '确认官方来源、版本、架构和 sha256 后再开启下载。' -ExitCode $script:DownloadFailureExitCode
         return New-DownloadResult -Source $source -Download $download -Decision $decision
     }
     if (-not $source.https -or -not $source.hostAllowed) {
@@ -441,7 +474,7 @@ function Invoke-RealDownloadDiscovery {
 function Get-TestDownloadResult {
     param([string] $Scenario)
 
-    $source = New-DownloadSource -SourceUri 'https://example.invalid/app-installer.msixbundle' -SourceHost 'example.invalid' -AllowedHostList @('example.invalid') -Https $true -HostAllowed $true
+    $source = Add-DownloadMetadataFields -Source (New-DownloadSource -SourceUri 'https://example.invalid/app-installer.msixbundle' -SourceHost 'example.invalid' -AllowedHostList @('example.invalid') -Https $true -HostAllowed $true)
     switch ($Scenario) {
         'planned' {
             $download = New-DownloadState -Root 'C:\Test\staging' -Path $null -Bytes $null -Sha256 $null -Attempts 0 -TimedOut $false -Error $null
@@ -459,7 +492,7 @@ function Get-TestDownloadResult {
             return New-DownloadResult -Source $source -Download $download -Decision $decision
         }
         'source_blocked' {
-            $blockedSource = New-DownloadSource -SourceUri 'http://example.invalid/app-installer.msixbundle' -SourceHost 'example.invalid' -AllowedHostList @('downloads.example.invalid') -Https $false -HostAllowed $false
+            $blockedSource = Add-DownloadMetadataFields -Source (New-DownloadSource -SourceUri 'http://example.invalid/app-installer.msixbundle' -SourceHost 'example.invalid' -AllowedHostList @('downloads.example.invalid') -Https $false -HostAllowed $false)
             $download = New-DownloadState -Root 'C:\Test\staging' -Path $null -Bytes $null -Sha256 $null -Attempts 0 -TimedOut $false -Error 'simulated blocked source'
             $decision = New-DownloadDecision -Status 'source_blocked' -Decision 'abort' -Reason 'simulated blocked source' -NextAction 'use allowed https source' -ExitCode $script:DownloadFailureExitCode
             return New-DownloadResult -Source $blockedSource -Download $download -Decision $decision
@@ -516,6 +549,11 @@ function Write-DownloadTextResult {
         Write-Field 'https' ([string] $Result.source.https)
         Write-Field 'hostAllowed' ([string] $Result.source.hostAllowed)
         Write-Field 'allowedHosts' ([string]::Join(',', @($Result.source.allowedHosts)))
+        Write-Field 'metadataComplete' ([string] $Result.source.metadataComplete)
+        Write-Field 'downloadEnabled' ([string] $Result.source.downloadEnabled)
+        Write-Field 'expectedSha256Present' ([string] $Result.source.expectedSha256Present)
+        Write-Field 'expectedSha256Valid' ([string] $Result.source.expectedSha256Valid)
+        Write-Field 'expectedSha256Normalized' $Result.source.expectedSha256Normalized
     }
 
     if ($null -ne $Result.download) {
