@@ -12,6 +12,8 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
+$script:ContractVersion = 'checkpoint.v1'
+$script:ComponentName = 'git'
 $script:ProbeTimeoutSeconds = 15
 $script:HelperFailureExitCode = 70
 $script:SampleMode = 'discovery-diagnose-decision-only'
@@ -22,6 +24,7 @@ $script:WingetPackageId = 'Git.Git'
 $script:AllowedStatuses = @('healthy', 'missing', 'command_broken', 'version_too_old', 'identity_untrusted', 'helper_failed')
 $script:AllowedDecisions = @('skip', 'install', 'repair', 'upgrade', 'reinstall', 'abort')
 $script:DecisionReportExitCode = 0
+$script:DependencyBlockerExitCode = 60
 
 function Write-Section {
     param([string] $Text)
@@ -269,6 +272,33 @@ function Test-PathEquals {
     return $leftPath.Equals($rightPath, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-ProjectLocalRoot {
+    $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+    if ([string]::IsNullOrWhiteSpace($localAppData)) {
+        $localAppData = $env:TEMP
+    }
+    return (Join-Path $localAppData 'dingjiai-installer')
+}
+
+function Test-PathInsideRoot {
+    param(
+        [string] $Path,
+        [string] $Root
+    )
+
+    $normalizedPath = Get-NormalizedPathText -Path $Path
+    $normalizedRoot = Get-NormalizedPathText -Path $Root
+    if ($null -eq $normalizedPath -or $null -eq $normalizedRoot) {
+        return $false
+    }
+    if ($normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
+    return $normalizedPath.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Test-GitTrustedPathShape {
     param([string] $Path)
 
@@ -370,7 +400,7 @@ function Get-GitDecision {
             decision = 'install'
             reason = '未发现 git.exe，后续版本应通过 winget package Git.Git 安装 Git for Windows。'
             nextAction = '当前样板只报告 install 决策，不执行安装。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -380,7 +410,7 @@ function Get-GitDecision {
             decision = 'repair'
             reason = '已发现 git.exe，但 git --version 无法正常返回。'
             nextAction = '当前样板只报告 repair 决策，不执行修复。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -390,7 +420,7 @@ function Get-GitDecision {
             decision = 'reinstall'
             reason = 'Git 可运行，但当前只读信任检查未确认其为项目认可的 Git for Windows 形态。'
             nextAction = '当前样板只报告 reinstall 决策，不执行重装。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -400,7 +430,7 @@ function Get-GitDecision {
             decision = 'upgrade'
             reason = "Git 版本低于当前最低要求 $($script:MinimumGitVersion.ToString())。"
             nextAction = '当前样板只报告 upgrade 决策，不执行升级。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -420,6 +450,8 @@ function New-GitResult {
     )
 
     return [pscustomobject] @{
+        contractVersion = $script:ContractVersion
+        component = $script:ComponentName
         flow = $FlowName
         checkpoint = $CheckpointName
         mutationAllowed = [bool] $AllowMutation
@@ -428,7 +460,7 @@ function New-GitResult {
         outputMode = $OutputMode
         testScenario = $TestScenario
         probeTimeoutSeconds = $script:ProbeTimeoutSeconds
-        exitCodeContract = "decision reports return 0; helper failures return $script:HelperFailureExitCode"
+        exitCodeContract = "healthy reports return 0; dependency blockers return $script:DependencyBlockerExitCode; helper failures return $script:HelperFailureExitCode"
         packageId = $script:WingetPackageId
         discovery = $Discovery
         decision = $Decision
@@ -439,6 +471,8 @@ function New-HelperFailureResult {
     param([string] $Reason)
 
     return [pscustomobject] @{
+        contractVersion = $script:ContractVersion
+        component = $script:ComponentName
         flow = $FlowName
         checkpoint = $CheckpointName
         mutationAllowed = [bool] $AllowMutation
@@ -447,7 +481,7 @@ function New-HelperFailureResult {
         outputMode = $OutputMode
         testScenario = $TestScenario
         probeTimeoutSeconds = $script:ProbeTimeoutSeconds
-        exitCodeContract = "decision reports return 0; helper failures return $script:HelperFailureExitCode"
+        exitCodeContract = "healthy reports return 0; dependency blockers return $script:DependencyBlockerExitCode; helper failures return $script:HelperFailureExitCode"
         packageId = $script:WingetPackageId
         discovery = $null
         decision = [pscustomobject] @{
@@ -464,6 +498,8 @@ function Write-GitTextResult {
     param($Result)
 
     Write-Host '[Git checkpoint]'
+    Write-Field 'contractVersion' $Result.contractVersion
+    Write-Field 'component' $Result.component
     Write-Field 'flow' $Result.flow
     Write-Field 'checkpoint' $Result.checkpoint
     Write-Field 'mutationAllowed' ([string] $Result.mutationAllowed)
@@ -509,6 +545,12 @@ function Test-ResultContract {
     if ($null -eq $Result) {
         throw 'Git result contract violation: result is null'
     }
+    if ($Result.contractVersion -ne $script:ContractVersion) {
+        throw 'Git result contract violation: contractVersion must be checkpoint.v1'
+    }
+    if ($Result.component -ne $script:ComponentName) {
+        throw 'Git result contract violation: component must be git'
+    }
     if ($null -eq $Result.decision) {
         throw 'Git result contract violation: decision is null'
     }
@@ -524,8 +566,14 @@ function Test-ResultContract {
         }
         return
     }
-    if ($Result.decision.exitCode -ne $script:DecisionReportExitCode) {
-        throw 'Git result contract violation: decision report exit code must be 0'
+    if ($Result.decision.status -eq 'healthy') {
+        if ($Result.decision.exitCode -ne $script:DecisionReportExitCode) {
+            throw 'Git result contract violation: healthy exit code must be 0'
+        }
+        return
+    }
+    if ($Result.decision.exitCode -ne $script:DependencyBlockerExitCode) {
+        throw 'Git result contract violation: dependency blocker exit code must be 60'
     }
 }
 
@@ -552,6 +600,11 @@ function Write-GitResultFile {
     }
 
     try {
+        $projectLocalRoot = Get-ProjectLocalRoot
+        if (-not (Test-PathInsideRoot -Path $ResultPath -Root $projectLocalRoot)) {
+            throw "Git result path must stay under $projectLocalRoot"
+        }
+
         $parentPath = Split-Path -Parent $ResultPath
         if (-not [string]::IsNullOrWhiteSpace($parentPath) -and -not (Test-Path -LiteralPath $parentPath -PathType Container)) {
             New-Item -ItemType Directory -Path $parentPath -Force | Out-Null

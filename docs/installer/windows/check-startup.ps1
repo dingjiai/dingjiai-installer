@@ -57,6 +57,44 @@ function Test-RelativePayloadPath {
 }
 
 
+function Get-NormalizedFullPath {
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    } catch {
+        return $null
+    }
+}
+
+function Test-PathInsideRoot {
+    param(
+        [string] $Path,
+        [string] $Root
+    )
+
+    $normalizedPath = Get-NormalizedFullPath -Path $Path
+    $normalizedRoot = Get-NormalizedFullPath -Path $Root
+    if ($null -eq $normalizedPath -or $null -eq $normalizedRoot) {
+        return $false
+    }
+    if ($normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
+    return $normalizedPath.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-Sha256Text {
+    param([string] $Value)
+    return ($Value -match '^[0-9a-fA-F]{64}$')
+}
+
 function Test-Utf8Bom {
     param([string] $Path)
 
@@ -85,6 +123,25 @@ function Get-Sha256Hex {
     }
 }
 
+function Invoke-CheckpointJson {
+    param(
+        [string] $Path,
+        [string[]] $Arguments,
+        [int] $ExpectedExitCode
+    )
+
+    $output = & cmd.exe /c "call `"$Path`" $($Arguments -join ' ')"
+    $exitCode = $LASTEXITCODE
+    Need ($exitCode -eq $ExpectedExitCode) "checkpoint exits ${ExpectedExitCode}: $Path $($Arguments -join ' ')"
+
+    try {
+        return (($output -join "`n") | ConvertFrom-Json)
+    } catch {
+        Fail "checkpoint did not emit valid JSON: $Path $($Arguments -join ' '): $($_.Exception.Message)"
+        return $null
+    }
+}
+
 $manifestPath = Join-Path $PSScriptRoot 'manifest.json'
 $payloadRoot = Join-Path $PSScriptRoot 'payload'
 $winEntryPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'win.ps1'
@@ -99,6 +156,8 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 Need ($manifest.schemaVersion -eq 1) 'manifest schemaVersion is 1'
+Need ($manifest.channel -eq 'v1-startup') 'manifest channel is v1-startup'
+Need (-not [string]::IsNullOrWhiteSpace([string] $manifest.payloadVersion)) 'manifest has payloadVersion'
 Need ($manifest.basePath -eq 'payload') 'manifest basePath is payload'
 Need ($manifest.mainEntry -eq 'main.cmd') 'manifest mainEntry is main.cmd'
 Need ($manifest.handoffMode -eq 'admin-cmd') 'manifest handoffMode is admin-cmd'
@@ -117,13 +176,15 @@ foreach ($file in $manifest.files) {
 
     $normalizedRelativePath = $payloadPath -replace '/', [System.IO.Path]::DirectorySeparatorChar
     $localPath = Join-Path $payloadRoot $normalizedRelativePath
+    Need (Test-PathInsideRoot -Path $localPath -Root $payloadRoot) "payload path stays under payload root: $payloadPath"
     $pathKey = $payloadPath.ToLowerInvariant()
 
     Need (-not $seenPaths.ContainsKey($pathKey)) "payload path is unique: $payloadPath"
     $seenPaths[$pathKey] = $true
 
     Need (Test-Path -LiteralPath $localPath -PathType Leaf) "payload file exists: $payloadPath"
-    Need (-not [string]::IsNullOrWhiteSpace([string] $file.sha256)) "payload file has sha256: $payloadPath"
+    Need (Test-Sha256Text -Value ([string] $file.sha256)) "payload file has valid sha256: $payloadPath"
+    Need ($file.required -is [bool]) "payload file required is boolean: $payloadPath"
     Need ($file.required -eq $true) "payload file is required: $payloadPath"
 
     if (Test-Path -LiteralPath $localPath -PathType Leaf) {
@@ -178,6 +239,18 @@ foreach ($requiredPayloadPath in $requiredPayloadPaths) {
     Need ($seenPaths.ContainsKey($requiredPayloadPath)) "manifest includes payload structure file: $requiredPayloadPath"
 }
 
+$checkpointRunnerPath = Join-Path $payloadRoot 'lib/windows/checkpoint_runner.cmd'
+Need (Test-Path -LiteralPath $checkpointRunnerPath -PathType Leaf) 'checkpoint runner exists'
+if (Test-Path -LiteralPath $checkpointRunnerPath -PathType Leaf) {
+    $checkpointRunner = Get-Content -LiteralPath $checkpointRunnerPath -Raw
+    Need ($checkpointRunner.Contains('DINGJIAI_CHECKPOINT_HELPER')) 'checkpoint runner reads helper environment'
+    Need ($checkpointRunner.Contains('DINGJIAI_CHECKPOINT_FLOW')) 'checkpoint runner reads flow environment'
+    Need ($checkpointRunner.Contains('DINGJIAI_CHECKPOINT_NAME')) 'checkpoint runner reads checkpoint environment'
+    Need ($checkpointRunner.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'checkpoint runner invokes PowerShell helper'
+    Need ($checkpointRunner.Contains('exit /b %errorlevel%')) 'checkpoint runner propagates helper exit code'
+}
+
+
 $mainCmdPath = Join-Path $payloadRoot 'main.cmd'
 if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     $mainCmd = Get-Content -LiteralPath $mainCmdPath -Raw
@@ -215,7 +288,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         if (Test-Path -LiteralPath $flowPath -PathType Leaf) {
             $flowText = Get-Content -LiteralPath $flowPath -Raw
             Need ($flowText.Contains('checkpoints\')) "flow entry calls checkpoints: $flowEntry"
-            Need ($flowText.Contains('exit /b 0')) "flow entry returns success from placeholder path: $flowEntry"
+            Need ($flowText.Contains('if errorlevel 1 exit /b %errorlevel%')) "flow entry gates on checkpoint errorlevel: $flowEntry"
         }
     }
 
@@ -225,8 +298,8 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need (Test-Path -LiteralPath $wingetCheckpointPath -PathType Leaf) 'winget checkpoint cmd exists'
     if (Test-Path -LiteralPath $wingetCheckpointPath -PathType Leaf) {
         $wingetCheckpoint = Get-Content -LiteralPath $wingetCheckpointPath -Raw
-        Need ($wingetCheckpoint.Contains('lib\windows\winget.ps1')) 'winget checkpoint delegates to winget.ps1 helper'
-        Need ($wingetCheckpoint.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'winget checkpoint uses PowerShell helper bridge'
+        Need ($wingetCheckpoint.Contains('lib\windows\checkpoint_runner.cmd')) 'winget checkpoint delegates to checkpoint runner'
+        Need ($wingetCheckpoint.Contains('DINGJIAI_CHECKPOINT_HELPER')) 'winget checkpoint sets helper environment'
         Need ($wingetCheckpoint.Contains('%*')) 'winget checkpoint forwards helper arguments for contract tests'
     }
 
@@ -254,6 +327,10 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($wingetHelper.Contains('officialSource')) 'winget.ps1 reports official source trust facts'
         Need ($wingetHelper.Contains('environment') -and $wingetHelper.Contains('versionProbe') -and $wingetHelper.Contains('sourceProbe')) 'winget.ps1 reports structured discovery facts'
         Need ($wingetHelper.Contains('HelperFailureExitCode = 70')) 'winget.ps1 separates helper failure exit code'
+        Need ($wingetHelper.Contains('DependencyBlockerExitCode = 60')) 'winget.ps1 locks dependency blocker exit code'
+        Need ($wingetHelper.Contains('dependencyBlocker')) 'winget.ps1 reports dependency blocker exit code contract'
+        Need ($wingetHelper.Contains("ContractVersion = 'checkpoint.v1'")) 'winget.ps1 declares checkpoint.v1 contract'
+        Need ($wingetHelper.Contains("ComponentName = 'winget'")) 'winget.ps1 declares winget component'
         Need ($wingetHelper.Contains('exitCodeContract')) 'winget.ps1 reports exit code contract'
         Need ($wingetHelper.Contains('Get-Command winget.exe')) 'winget.ps1 discovers active winget command'
         Need ($wingetHelper.Contains("'--version'")) 'winget.ps1 probes winget version'
@@ -265,7 +342,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         foreach ($status in @('healthy', 'missing', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')) {
             Need ($wingetHelper.Contains("'$status'")) "winget.ps1 status enum includes $status"
         }
-        Need ($wingetHelper.Contains('DecisionReportExitCode = 0')) 'winget.ps1 locks decision report exit code'
+        Need ($wingetHelper.Contains('DecisionReportExitCode = 0')) 'winget.ps1 locks healthy exit code'
         Need ($wingetHelper.Contains('function Test-ResultContract')) 'winget.ps1 validates result contract before output'
         Need ($wingetHelper.Contains('function Get-ProjectLocalRoot')) 'winget.ps1 anchors result files under project local root'
         Need ($wingetHelper.Contains('function Get-NormalizedFullPath')) 'winget.ps1 normalizes result paths before containment checks'
@@ -307,8 +384,8 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need (Test-Path -LiteralPath $downloadCheckpointPath -PathType Leaf) 'App Installer download checkpoint cmd exists'
     if (Test-Path -LiteralPath $downloadCheckpointPath -PathType Leaf) {
         $downloadCheckpoint = Get-Content -LiteralPath $downloadCheckpointPath -Raw
-        Need ($downloadCheckpoint.Contains('lib\windows\download.ps1')) 'App Installer download checkpoint delegates to download.ps1 helper'
-        Need ($downloadCheckpoint.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'App Installer download checkpoint uses PowerShell helper bridge'
+        Need ($downloadCheckpoint.Contains('lib\windows\checkpoint_runner.cmd')) 'App Installer download checkpoint delegates to checkpoint runner'
+        Need ($downloadCheckpoint.Contains('DINGJIAI_CHECKPOINT_HELPER')) 'App Installer download checkpoint sets helper environment'
         Need ($downloadCheckpoint.Contains('%*')) 'App Installer download checkpoint forwards helper arguments for contract tests'
         Need ($downloadCheckpoint.Contains('app-installer-download')) 'App Installer download checkpoint names the checkpoint explicitly'
         Need ($downloadCheckpoint.Contains('-ArtifactKind "AppInstaller"')) 'App Installer download checkpoint declares AppInstaller artifact kind'
@@ -321,6 +398,8 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     if (Test-Path -LiteralPath $downloadHelperPath -PathType Leaf) {
         Test-PowerShellFileSyntax -Path $downloadHelperPath
         $downloadHelper = Get-Content -LiteralPath $downloadHelperPath -Raw
+        Need ($downloadHelper.Contains("ContractVersion = 'checkpoint.v1'")) 'download.ps1 declares checkpoint.v1 contract'
+        Need ($downloadHelper.Contains("ComponentName = 'download'")) 'download.ps1 declares download component'
         Need ($downloadHelper.Contains('download-only-staging')) 'download.ps1 stays in download-only staging mode'
         Need ($downloadHelper.Contains('DownloadFailureExitCode = 60')) 'download.ps1 separates download failure exit code'
         Need ($downloadHelper.Contains('HelperFailureExitCode = 70')) 'download.ps1 separates helper failure exit code'
@@ -363,8 +442,8 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need (Test-Path -LiteralPath $gitCheckpointPath -PathType Leaf) 'Git checkpoint cmd exists'
     if (Test-Path -LiteralPath $gitCheckpointPath -PathType Leaf) {
         $gitCheckpoint = Get-Content -LiteralPath $gitCheckpointPath -Raw
-        Need ($gitCheckpoint.Contains('lib\windows\git.ps1')) 'Git checkpoint delegates to git.ps1 helper'
-        Need ($gitCheckpoint.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File')) 'Git checkpoint uses PowerShell helper bridge'
+        Need ($gitCheckpoint.Contains('lib\windows\checkpoint_runner.cmd')) 'Git checkpoint delegates to checkpoint runner'
+        Need ($gitCheckpoint.Contains('DINGJIAI_CHECKPOINT_HELPER')) 'Git checkpoint sets helper environment'
         Need ($gitCheckpoint.Contains('%*')) 'Git checkpoint forwards helper arguments for contract tests'
     }
 
@@ -389,6 +468,8 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($gitHelper.Contains("MinimumGitVersion = [version] '2.40.0'")) 'git.ps1 locks minimum Git version placeholder'
         Need ($gitHelper.Contains("ExpectedVersionMarker = 'windows.'")) 'git.ps1 checks Git for Windows version marker placeholder'
         Need ($gitHelper.Contains("WingetPackageId = 'Git.Git'")) 'git.ps1 reports winget Git package identity'
+        Need ($gitHelper.Contains("ContractVersion = 'checkpoint.v1'")) 'git.ps1 declares checkpoint.v1 contract'
+        Need ($gitHelper.Contains("ComponentName = 'git'")) 'git.ps1 declares git component'
         Need ($gitHelper.Contains('HelperFailureExitCode = 70')) 'git.ps1 separates helper failure exit code'
         Need ($gitHelper.Contains('exitCodeContract')) 'git.ps1 reports exit code contract'
         Need ($gitHelper.Contains('Get-Command git.exe')) 'git.ps1 discovers active Git command'
@@ -399,6 +480,9 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($gitHelper.Contains('AllowedDecisions')) 'git.ps1 locks decision enum contract'
         Need ($gitHelper.Contains('DecisionReportExitCode = 0')) 'git.ps1 locks decision report exit code'
         Need ($gitHelper.Contains('function Test-ResultContract')) 'git.ps1 validates result contract before output'
+        Need ($gitHelper.Contains('function Get-ProjectLocalRoot')) 'git.ps1 anchors result files under project local root'
+        Need ($gitHelper.Contains('function Test-PathInsideRoot')) 'git.ps1 validates result path containment'
+        Need ($gitHelper.Contains('Git result path must stay under')) 'git.ps1 restricts result files to project local root'
         Need ($gitHelper.Contains('ResultPath')) 'git.ps1 supports optional result file output'
         Need ($gitHelper.Contains('function Write-GitResultFile')) 'git.ps1 writes optional json result file'
         Need ($gitHelper.Contains('Git result file write failed')) 'git.ps1 reports result file write failures explicitly'
@@ -413,6 +497,94 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($gitHelper.Contains('version_too_old')) 'git.ps1 can simulate old Git version'
         Need ($gitHelper.Contains('version_untrusted')) 'git.ps1 can simulate untrusted Git version marker'
         Need ($gitHelper.Contains('path_untrusted')) 'git.ps1 can simulate untrusted Git path shape'
+    }
+
+    $placeholderPaths = @(
+        'flows/windows/install/checkpoints/00_preflight.cmd',
+        'flows/windows/install/checkpoints/30_claude.cmd',
+        'flows/windows/install/checkpoints/40_enhancements.cmd',
+        'flows/windows/install/checkpoints/50_config.cmd',
+        'flows/windows/install/checkpoints/90_finalize.cmd',
+        'flows/windows/update/checkpoints/00_preflight.cmd',
+        'flows/windows/update/checkpoints/20_git.cmd',
+        'flows/windows/update/checkpoints/30_claude.cmd',
+        'flows/windows/update/checkpoints/40_enhancements.cmd',
+        'flows/windows/update/checkpoints/90_finalize.cmd',
+        'flows/windows/uninstall/checkpoints/00_preflight.cmd',
+        'flows/windows/uninstall/checkpoints/30_claude.cmd',
+        'flows/windows/uninstall/checkpoints/40_enhancements.cmd',
+        'flows/windows/uninstall/checkpoints/90_finalize.cmd'
+    )
+    foreach ($placeholderPath in $placeholderPaths) {
+        $fullPlaceholderPath = Join-Path $payloadRoot $placeholderPath
+        Need (Test-Path -LiteralPath $fullPlaceholderPath -PathType Leaf) "placeholder checkpoint exists: $placeholderPath"
+        if (Test-Path -LiteralPath $fullPlaceholderPath -PathType Leaf) {
+            $placeholderText = Get-Content -LiteralPath $fullPlaceholderPath -Raw
+            Need ($placeholderText.Contains('NOT_IMPLEMENTED')) "placeholder checkpoint says NOT_IMPLEMENTED: $placeholderPath"
+            Need ($placeholderText.Contains('exit /b 11')) "placeholder checkpoint exits 11: $placeholderPath"
+        }
+    }
+
+
+    $wingetJson = Invoke-CheckpointJson -Path $wingetCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'healthy') -ExpectedExitCode 0
+    if ($null -ne $wingetJson) {
+        Need ($wingetJson.contractVersion -eq 'checkpoint.v1') 'winget checkpoint runner emits checkpoint.v1 JSON'
+        Need ($wingetJson.component -eq 'winget') 'winget checkpoint runner preserves component'
+        Need ($wingetJson.decision.status -eq 'healthy') 'winget checkpoint runner preserves healthy status'
+        Need ($wingetJson.exitCodeContract.healthy -eq 0) 'winget checkpoint reports healthy exit code contract'
+        Need ($wingetJson.exitCodeContract.dependencyBlocker -eq 60) 'winget checkpoint reports dependency blocker exit code contract'
+        Need ($wingetJson.exitCodeContract.helperFailure -eq 70) 'winget checkpoint reports helper failure exit code contract'
+    }
+
+    $gitJson = Invoke-CheckpointJson -Path $gitCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'healthy') -ExpectedExitCode 0
+    if ($null -ne $gitJson) {
+        Need ($gitJson.contractVersion -eq 'checkpoint.v1') 'Git checkpoint runner emits checkpoint.v1 JSON'
+        Need ($gitJson.component -eq 'git') 'Git checkpoint runner preserves component'
+        Need ($gitJson.decision.status -eq 'healthy') 'Git checkpoint runner preserves healthy status'
+    }
+
+    $downloadJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'planned') -ExpectedExitCode 0
+    if ($null -ne $downloadJson) {
+        Need ($downloadJson.contractVersion -eq 'checkpoint.v1') 'download checkpoint runner emits checkpoint.v1 JSON'
+        Need ($downloadJson.component -eq 'download') 'download checkpoint runner preserves component'
+        Need ($downloadJson.checkpoint -eq 'app-installer-download') 'download checkpoint runner preserves checkpoint name'
+        Need ($downloadJson.artifactKind -eq 'AppInstaller') 'download checkpoint runner preserves artifact kind'
+    }
+
+    $wingetMissingJson = Invoke-CheckpointJson -Path $wingetCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'missing') -ExpectedExitCode 60
+    if ($null -ne $wingetMissingJson) {
+        Need ($wingetMissingJson.decision.status -eq 'missing') 'winget checkpoint blocks missing dependency state'
+        Need ($wingetMissingJson.decision.exitCode -eq 60) 'winget checkpoint reports missing as dependency blocker exit code'
+    }
+
+    $wingetSourceUntrustedJson = Invoke-CheckpointJson -Path $wingetCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'source_untrusted') -ExpectedExitCode 60
+    if ($null -ne $wingetSourceUntrustedJson) {
+        Need ($wingetSourceUntrustedJson.decision.status -eq 'source_untrusted') 'winget checkpoint blocks untrusted source state'
+        Need ($wingetSourceUntrustedJson.decision.exitCode -eq 60) 'winget checkpoint reports untrusted source as dependency blocker exit code'
+    }
+
+    $gitMissingJson = Invoke-CheckpointJson -Path $gitCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'missing') -ExpectedExitCode 60
+    if ($null -ne $gitMissingJson) {
+        Need ($gitMissingJson.decision.status -eq 'missing') 'Git checkpoint blocks missing dependency state'
+        Need ($gitMissingJson.decision.exitCode -eq 60) 'Git checkpoint reports missing as dependency blocker exit code'
+    }
+
+    $gitVersionTooOldJson = Invoke-CheckpointJson -Path $gitCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'version_too_old') -ExpectedExitCode 60
+    if ($null -ne $gitVersionTooOldJson) {
+        Need ($gitVersionTooOldJson.decision.status -eq 'version_too_old') 'Git checkpoint blocks old version state'
+        Need ($gitVersionTooOldJson.decision.exitCode -eq 60) 'Git checkpoint reports old version as dependency blocker exit code'
+    }
+
+    $gitPathUntrustedJson = Invoke-CheckpointJson -Path $gitCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'path_untrusted') -ExpectedExitCode 60
+    if ($null -ne $gitPathUntrustedJson) {
+        Need ($gitPathUntrustedJson.decision.status -eq 'identity_untrusted') 'Git checkpoint blocks untrusted identity state'
+        Need ($gitPathUntrustedJson.decision.exitCode -eq 60) 'Git checkpoint reports untrusted identity as dependency blocker exit code'
+    }
+
+    $downloadFailureJson = Invoke-CheckpointJson -Path $downloadCheckpointPath -Arguments @('-OutputMode', 'Json', '-TestScenario', 'hash_mismatch') -ExpectedExitCode 60
+    if ($null -ne $downloadFailureJson) {
+        Need ($downloadFailureJson.decision.status -eq 'hash_mismatch') 'download checkpoint runner propagates business failure status'
+        Need ($downloadFailureJson.decision.exitCode -eq 60) 'download checkpoint runner propagates business failure exit code in JSON'
     }
 
     $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1
@@ -437,8 +609,16 @@ if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
     Need ($winEntry -match '\$script:MinimumPowerShellVersion\s*=\s*\[version\]''5\.1''') 'win.ps1 requires PowerShell 5.1+'
     Need ($winEntry -match '\$script:MinimumWindowsBuild\s*=\s*17763') 'win.ps1 requires Windows build 17763+'
     Need ($winEntry -match 'function Get-StartupFailureSuggestion') 'win.ps1 has failure suggestion mapper'
-    Need ($winEntry -match "'handoff_denied_or_failed'") 'win.ps1 maps handoff denial failure suggestion'
+    Need ($winEntry -match "'handoff_failed'") 'win.ps1 maps handoff failure suggestion'
     Need ($winEntry -match 'function Write-StartupFailureMessage') 'win.ps1 has unified failure message writer'
+    Need ($winEntry.Contains('manifest_read_failed')) 'win.ps1 uses manifest_read_failed reason'
+    Need ($winEntry.Contains('manifest_schema_invalid')) 'win.ps1 uses manifest_schema_invalid reason'
+    Need ($winEntry.Contains('payload_path_invalid')) 'win.ps1 uses payload_path_invalid reason'
+    Need ($winEntry.Contains('payload_download_failed')) 'win.ps1 uses payload_download_failed reason'
+    Need ($winEntry.Contains('entry_shape_invalid')) 'win.ps1 uses entry_shape_invalid reason'
+    Need ($winEntry.Contains('handoff_timeout')) 'win.ps1 uses handoff_timeout reason'
+    Need ($winEntry.Contains('function Test-PathInsideRoot')) 'win.ps1 has path containment helper'
+    Need ($winEntry.Contains('Test-PathInsideRoot -Path $rootedPath -Root $Root')) 'win.ps1 validates payload relative paths by containment'
     Need ($winEntry -match 'failureSuggestion') 'win.ps1 writes failure suggestion to state'
     Need ($winEntry -match 'failureLogPath') 'win.ps1 writes failure log path to state'
     Need ($winEntry -match 'function Test-HandoffAcceptedState') 'win.ps1 validates handoff accepted state'

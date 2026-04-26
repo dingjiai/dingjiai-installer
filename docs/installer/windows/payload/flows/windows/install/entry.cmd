@@ -3,7 +3,7 @@ chcp 65001 >NUL
 setlocal EnableExtensions
 
 echo 安装 Claude 和依赖 flow 已进入。
-echo 当前 flow 包含只读 checkpoint 样板，不会安装、修复或修改系统。
+echo 当前 flow 包含只读样板和未实现 checkpoint；遇到 NOT_IMPLEMENTED 会停止，不会伪装完成。
 echo.
 call "%~dp0checkpoints\00_preflight.cmd"
 if errorlevel 1 exit /b %errorlevel%
@@ -22,5 +22,5 @@ if errorlevel 1 exit /b %errorlevel%
 call "%~dp0checkpoints\90_finalize.cmd"
 if errorlevel 1 exit /b %errorlevel%
 echo.
-echo 安装 Claude 和依赖 flow 样板已结束。
+echo 安装 Claude 和依赖 flow 已完成当前可执行样板。
 exit /b 0

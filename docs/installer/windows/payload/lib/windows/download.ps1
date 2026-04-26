@@ -21,6 +21,8 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
+$script:ContractVersion = 'checkpoint.v1'
+$script:ComponentName = 'download'
 $script:HelperFailureExitCode = 70
 $script:DownloadFailureExitCode = 60
 $script:DecisionReportExitCode = 0
@@ -116,6 +118,8 @@ function New-DownloadResult {
     )
 
     return [pscustomobject] @{
+        contractVersion = $script:ContractVersion
+        component = $script:ComponentName
         flow = $FlowName
         checkpoint = $CheckpointName
         artifactName = $ArtifactName
@@ -489,6 +493,8 @@ function Write-DownloadTextResult {
     param($Result)
 
     Write-Host '[download checkpoint]'
+    Write-Field 'contractVersion' $Result.contractVersion
+    Write-Field 'component' $Result.component
     Write-Field 'flow' $Result.flow
     Write-Field 'checkpoint' $Result.checkpoint
     Write-Field 'artifactName' $Result.artifactName
@@ -538,6 +544,12 @@ function Test-ResultContract {
 
     if ($null -eq $Result) {
         throw 'download result contract violation: result is null'
+    }
+    if ($Result.contractVersion -ne $script:ContractVersion) {
+        throw 'download result contract violation: contractVersion must be checkpoint.v1'
+    }
+    if ($Result.component -ne $script:ComponentName) {
+        throw 'download result contract violation: component must be download'
     }
     if ($null -eq $Result.decision) {
         throw 'download result contract violation: decision is null'

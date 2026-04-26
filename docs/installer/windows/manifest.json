@@ -8,107 +8,107 @@
   "files": [
     {
       "path": "flows/windows/install/checkpoints/00_preflight.cmd",
-      "sha256": "9fd6383fbaac8a3fedd3fce38c6925f11aa43871d805f517c9db96f08cf73de0",
+      "sha256": "fa633eac5f6d94761e0e24f5d686204cf60a894a4aee1146cbca96b81e829559",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/10_winget.cmd",
-      "sha256": "c0175d590780024b16e1a34813666c7429fd5354f16db3442cc4362f42f9d7c4",
+      "sha256": "9bf71eb296b8484d79e7465a0691ab878ca198cdc482b973d78422bc25fbe4ef",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/15_app_installer_download.cmd",
-      "sha256": "cc57de499a7396553555ed164d75b77b8254a28334a12bab9e3dbb0984722b5d",
+      "sha256": "b75df4dc285df42eb4a428fe53e8e622fc25a3f6a62050a1320cf869dbffac85",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/20_git.cmd",
-      "sha256": "6248691d30559cd8c59cf79bf7d2465cc8eda4365eec382f98497c6b2c04a573",
+      "sha256": "93d4b6a785a7a3ff5a85a361b8e46b6598a3a7fb6e211efc468e9bd5474fd9be",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/30_claude.cmd",
-      "sha256": "cbb26dc813ba8362e0c200a903219e4d894b836b800b88c1df258a55730b5deb",
+      "sha256": "7c394dcc4cbeb40b274cc9b4dd5034fbddbabc2b71915837efcc99287a3e095f",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/40_enhancements.cmd",
-      "sha256": "3cc8e4fe4de60432547e893685d0b360420ceb36491a38343571501909a5bfce",
+      "sha256": "d02e443018d019029f9a89120c569cfcd7b954bfb8e4df6362f19f7ab38fcf03",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/50_config.cmd",
-      "sha256": "53244e920d088e0b643efde2133c3a78dc2cc7c391b9a0d54a08b0f392762bb5",
+      "sha256": "674063d3b675d77b4cc63ccd6fe38d414d8988adc813979280c595cccadb5aa7",
       "required": true
     },
     {
       "path": "flows/windows/install/checkpoints/90_finalize.cmd",
-      "sha256": "9b6b9f65fdda80b368e5c39896c149662993059d9680592a1da445251051b189",
+      "sha256": "4ad176142689ae4cb2c33032ba0135eeede6089f7568dad56277dc6b51ad1df3",
       "required": true
     },
     {
       "path": "flows/windows/install/entry.cmd",
-      "sha256": "53322d8310f4c9e683d2fb7198b51ba906b3acdd87537d617a75d745d85234f3",
+      "sha256": "63c08a1f52d217100feb03c4e3cd7ce45d5759adf9d5808f3ecc30ae0a52e8d3",
       "required": true
     },
     {
       "path": "flows/windows/uninstall/checkpoints/00_preflight.cmd",
-      "sha256": "e3f6e649c278dc2d74eb5d82e4be754ab5459ae49a5e0a3c3bceefe3c74878f5",
+      "sha256": "18b68d579a65f988fafbd1efb1ef9bbd7ee80de76d4e39b8b4d450bbd018e455",
       "required": true
     },
     {
       "path": "flows/windows/uninstall/checkpoints/30_claude.cmd",
-      "sha256": "624e1c4f90bc6223cdc354add3c3d5d045129b1a21703d881a866a2a84ea93f7",
+      "sha256": "b076d339386fd7dd1566670b0a1d5b50613d77d7eff2e9bfb37d706c314fd3e9",
       "required": true
     },
     {
       "path": "flows/windows/uninstall/checkpoints/40_enhancements.cmd",
-      "sha256": "9d6bf31dd215dd1f4a26bf6ff1e8d68ccafaf98df8fb8910542584a68ee2bc0b",
+      "sha256": "a8358daf3384d82f1c8ca9ba831cb7910f85c6312244c2ff20bc51df85e0ea05",
       "required": true
     },
     {
       "path": "flows/windows/uninstall/checkpoints/90_finalize.cmd",
-      "sha256": "ad41597d79d9d56272c81bea88e0dac522f0d8b2ca522826361db0a8556a452e",
+      "sha256": "297f548858012083ac19cab836743cd8aedbf61747bd6bab1dc5fffcd4787ba7",
       "required": true
     },
     {
       "path": "flows/windows/uninstall/entry.cmd",
-      "sha256": "054c802be313763a414daf3485e20f6e3e0754186210f2ec278894ac50be957e",
+      "sha256": "46a78c220431796bc62098d531a3a01aa2836352b4d6c86b507ec74fcd686cfe",
       "required": true
     },
     {
       "path": "flows/windows/update/checkpoints/00_preflight.cmd",
-      "sha256": "96a0fdd0b7eb7001964a425965a32c9a9fb59522afd6095067ae13fcab24a56f",
+      "sha256": "3338a5e2e5ffbe6482433cfaab91f1e77ec630fa42aafba111f8565f888c39cf",
       "required": true
     },
     {
       "path": "flows/windows/update/checkpoints/20_git.cmd",
-      "sha256": "3f957b576d9e01edca59f748fadfff5c5f83ed73ae31f5e054b92cc36a1d47b8",
+      "sha256": "6067ec82d5499e30d3d0420d1453e57fa7d49b5d0544f6d58b50edca743ff01d",
       "required": true
     },
     {
       "path": "flows/windows/update/checkpoints/30_claude.cmd",
-      "sha256": "e6a5b6e3a22a8084a8064cac0bcfb5e2debb92dbefb2b6d1ee0774d3d78495e6",
+      "sha256": "b617c573fc871a55efeebe51542f6bde860f702288757cef562a6784b24a7371",
       "required": true
     },
     {
       "path": "flows/windows/update/checkpoints/40_enhancements.cmd",
-      "sha256": "8d9151662dc5718d7231f32775ce002abbcc793ece0d28dfc90301f7d1e9ca9c",
+      "sha256": "079d66e3e16f3b7c2c7f1dafccccd777d18ffebd64ac42a63a027ed93cbe4a87",
       "required": true
     },
     {
       "path": "flows/windows/update/checkpoints/90_finalize.cmd",
-      "sha256": "d991f9b53a3bd572332e8ecc6d835f76279e227fd160df5f47b7311b33498631",
+      "sha256": "0f8357c804da6406a138c1ce1e7f281058f57fbbbbe320ec0896e8f71a0db331",
       "required": true
     },
     {
       "path": "flows/windows/update/entry.cmd",
-      "sha256": "432b621fd6bc90e7f76d433f0dfca52607524a1da55962c9a5604f08eceb67b5",
+      "sha256": "7de2d92aa7bb757fbd666003a279c9016bfabe7efa4e40f27b651911373fc8ea",
       "required": true
     },
     {
       "path": "lib/windows/checkpoint_runner.cmd",
-      "sha256": "402b4092e873451c26ccc6abf893b952f8d2f0dac7fbc8ff8f0851e5b0ad64b0",
+      "sha256": "974ad976434c98e166cfe64444ab1eaf1de53c55f9b432c954fa1962406b2283",
       "required": true
     },
     {
@@ -118,7 +118,7 @@
     },
     {
       "path": "lib/windows/download.ps1",
-      "sha256": "980f6e8b0a02fe621c5dad453084ea504f5e9d9dca9913a5fe9194fc8a1dc486",
+      "sha256": "57134b2dba101b4a1a0a9c3458d5a18d3a425b01c0c0ea7a6d43e1893b8a073c",
       "required": true
     },
     {
@@ -128,7 +128,7 @@
     },
     {
       "path": "lib/windows/git.ps1",
-      "sha256": "8d41e205277e5bc89138e7b16037efc978372c1c27c394508fd92128af71adbb",
+      "sha256": "e25d953ced1797649a34c7b7ff150fa8990efbc30eb8be30667a9e7903031619",
       "required": true
     },
     {
@@ -153,7 +153,7 @@
     },
     {
       "path": "lib/windows/winget.ps1",
-      "sha256": "159407278b9ead512b48a27d2c4b5a9852d961456c8674b33890f0677c0c0b12",
+      "sha256": "7e7a0bb0de89de1232b8a3132463e169bb640e01643cb9d09f6d8698be413d42",
       "required": true
     },
     {

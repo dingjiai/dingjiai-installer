@@ -139,13 +139,14 @@ function Get-StartupFailureSuggestion {
         'powershell_runtime_capability_missing' { return '请换用完整的 Windows PowerShell 环境后重试。' }
         'workspace_preparation_timeout' { return '请稍后重试；如果仍失败，请检查本机磁盘、杀毒软件或 AppData 写入权限。' }
         'workspace_create_failed' { return '请确认当前用户可以写入 AppData，本地安全软件没有拦截文件创建。' }
-        'manifest_invalid_json' { return '请稍后重试；如果你在本地调试，请先运行 manifest/payload 自检。' }
-        'manifest_schema_unsupported' { return '请更新到最新启动器文件后重试。' }
-        'manifest_handoff_unsupported' { return '请更新到最新启动器文件后重试。' }
+        'manifest_read_failed' { return '请检查网络、代理或本地调试文件是否完整，然后重试。' }
+        'manifest_schema_invalid' { return '请稍后重试；如果你在本地调试，请先运行 manifest/payload 自检。' }
+        'payload_path_invalid' { return '请更新到最新启动器文件后重试；如果你在本地调试，请检查 manifest 中的 payload 路径。' }
+        'payload_download_failed' { return '请检查网络、代理或本地调试 payload 文件是否完整，然后重试。' }
         'payload_hash_mismatch' { return '请重新运行启动命令；如果你在本地调试，请同步 manifest 中的 SHA-256 后运行自检。' }
-        'handoff_start_failed' { return '请确认你允许了 UAC 管理员权限弹窗，然后重新运行启动命令。' }
-        'handoff_denied_or_failed' { return '请确认你允许了 UAC 管理员权限弹窗；如果没有看到弹窗，请检查安全软件或从 Windows 自带 PowerShell 重新运行启动命令。' }
-        'handoff_accept_timeout' { return '请查看是否有管理员权限弹窗被隐藏；如果已弹出 CMD，请确认窗口没有被安全软件拦截。' }
+        'entry_shape_invalid' { return '请更新到最新启动器文件后重试；如果你在本地调试，请检查 mainEntry 是否仍为 payload 内的 CMD 文件。' }
+        'handoff_failed' { return '请确认你允许了 UAC 管理员权限弹窗；如果没有看到弹窗，请检查安全软件或从 Windows 自带 PowerShell 重新运行启动命令。' }
+        'handoff_timeout' { return '请查看是否有管理员权限弹窗被隐藏；如果已弹出 CMD，请确认窗口没有被安全软件拦截。' }
         'startup_budget_exceeded' { return '请稍后重试；如果多次发生，请把日志路径发给维护者排查。' }
         default { return '请重新运行启动命令；如果仍失败，请把日志路径发给维护者排查。' }
     }
@@ -202,6 +203,25 @@ function Test-SamePath {
     }
 
     return $leftPath.Equals($rightPath, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-PathInsideRoot {
+    param(
+        [string] $Path,
+        [string] $Root
+    )
+
+    $normalizedPath = Get-NormalizedPath -Path $Path
+    $normalizedRoot = Get-NormalizedPath -Path $Root
+    if ($null -eq $normalizedPath -or $null -eq $normalizedRoot) {
+        return $false
+    }
+    if ($normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $rootWithSeparator = $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar
+    return $normalizedPath.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Test-HandoffAcceptedState {
@@ -329,6 +349,9 @@ function Write-StartupState {
         stage = $Stage
         writtenAt = $state.updatedAt
         statePath = $script:StatePath
+        logPath = $script:LogPath
+        failureReason = $script:LastFailureReason
+        failureMessage = $script:LastFailureMessage
         checkCount = $script:StartupChecks.Count
     }
     $logEntry | ConvertTo-Json -Depth 4 -Compress | Add-Content -LiteralPath $script:LogPath -Encoding UTF8
@@ -701,47 +724,105 @@ function Get-FileSha256 {
 }
 
 function Read-Manifest {
-    Copy-LocalFileOrDownload -RelativePath 'manifest.json' -DestinationPath $script:ManifestPath -Kind 'manifest'
-    Add-StartupCheck -Name 'manifest_acquired' -Status 'passed' -Detail @{ manifestPath = $script:ManifestPath }
+    try {
+        Copy-LocalFileOrDownload -RelativePath 'manifest.json' -DestinationPath $script:ManifestPath -Kind 'manifest'
+        Add-StartupCheck -Name 'manifest_acquired' -Status 'passed' -Detail @{ manifestPath = $script:ManifestPath }
+    } catch {
+        Add-StartupCheck -Name 'manifest_acquired' -Status 'failed' -Detail @{ manifestPath = $script:ManifestPath; error = $_.Exception.Message }
+        Stop-Startup -Reason 'manifest_read_failed' -Message 'manifest.json 获取失败。'
+    }
+
     try {
         $manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
         Add-StartupCheck -Name 'manifest_json' -Status 'passed' -Detail @{ manifestPath = $script:ManifestPath }
         return $manifest
     } catch {
-        Add-StartupCheck -Name 'manifest_json' -Status 'failed' -Detail @{ manifestPath = $script:ManifestPath }
-        Stop-Startup -Reason 'manifest_invalid_json' -Message 'manifest.json 无法解析。'
+        Add-StartupCheck -Name 'manifest_json' -Status 'failed' -Detail @{ manifestPath = $script:ManifestPath; error = $_.Exception.Message }
+        Stop-Startup -Reason 'manifest_schema_invalid' -Message 'manifest.json 无法解析。'
     }
+}
+
+function Test-Sha256Text {
+    param([string] $Value)
+    return ($Value -match '^[0-9a-fA-F]{64}$')
+}
+
+function Stop-ManifestShape {
+    param(
+        [string] $Detail,
+        [string] $Message = 'manifest.json 结构不符合当前启动契约。'
+    )
+
+    Add-StartupCheck -Name 'manifest_shape' -Status 'failed' -Detail @{ reason = $Detail; manifestPath = $script:ManifestPath }
+    Stop-Startup -Reason 'manifest_schema_invalid' -Message $Message
 }
 
 function Assert-ManifestShape {
     param($Manifest)
 
+    if ($null -eq $Manifest) {
+        Stop-ManifestShape -Detail 'manifest_null'
+    }
     if ($Manifest.schemaVersion -ne 1) {
-        Stop-Startup -Reason 'manifest_schema_unsupported' -Message 'manifest schemaVersion 不受支持。'
+        Stop-ManifestShape -Detail 'schema_version_unsupported' -Message 'manifest schemaVersion 不受支持。'
+    }
+    if ($Manifest.channel -ne 'v1-startup') {
+        Stop-ManifestShape -Detail 'channel_unsupported' -Message 'manifest channel 不受支持。'
+    }
+    if ([string]::IsNullOrWhiteSpace($Manifest.payloadVersion)) {
+        Stop-ManifestShape -Detail 'payload_version_missing' -Message 'manifest 缺少 payloadVersion。'
+    }
+    if ($Manifest.basePath -ne 'payload') {
+        Stop-ManifestShape -Detail 'base_path_unsupported' -Message 'manifest basePath 必须是 payload。'
+    }
+    if ($Manifest.mainEntry -ne 'main.cmd') {
+        Stop-ManifestShape -Detail 'main_entry_unsupported' -Message 'manifest mainEntry 必须是 main.cmd。'
     }
     if ($Manifest.handoffMode -ne 'admin-cmd') {
-        Stop-Startup -Reason 'manifest_handoff_unsupported' -Message 'manifest handoffMode 不受支持。'
-    }
-    if ([string]::IsNullOrWhiteSpace($Manifest.basePath)) {
-        Stop-Startup -Reason 'manifest_base_path_missing' -Message 'manifest 缺少 basePath。'
-    }
-    if ([string]::IsNullOrWhiteSpace($Manifest.mainEntry)) {
-        Stop-Startup -Reason 'manifest_main_entry_missing' -Message 'manifest 缺少 mainEntry。'
+        Stop-ManifestShape -Detail 'handoff_mode_unsupported' -Message 'manifest handoffMode 不受支持。'
     }
     if (-not $Manifest.files -or $Manifest.files.Count -lt 1) {
-        Stop-Startup -Reason 'manifest_files_missing' -Message 'manifest 缺少 payload 文件清单。'
+        Stop-ManifestShape -Detail 'files_missing' -Message 'manifest 缺少 payload 文件清单。'
     }
-    Add-StartupCheck -Name 'manifest_shape' -Status 'passed' -Detail @{ schemaVersion = $Manifest.schemaVersion; handoffMode = $Manifest.handoffMode; basePath = $Manifest.basePath; mainEntry = $Manifest.mainEntry; fileCount = $Manifest.files.Count }
+
+    $seenPaths = @{}
+    foreach ($file in $Manifest.files) {
+        if ([string]::IsNullOrWhiteSpace($file.path)) {
+            Stop-ManifestShape -Detail 'file_path_missing' -Message 'manifest 文件项缺少 path。'
+        }
+        if (-not (Test-Sha256Text -Value $file.sha256)) {
+            Stop-ManifestShape -Detail 'file_sha256_invalid' -Message "manifest 文件 $($file.path) 的 sha256 不合法。"
+        }
+        if ($file.required -isnot [bool]) {
+            Stop-ManifestShape -Detail 'file_required_invalid' -Message "manifest 文件 $($file.path) 的 required 必须是布尔值。"
+        }
+
+        $pathKey = ([string] $file.path).Replace('', '/').ToLowerInvariant()
+        if ($seenPaths.ContainsKey($pathKey)) {
+            Stop-ManifestShape -Detail 'file_path_duplicate' -Message "manifest 文件路径重复：$($file.path)。"
+        }
+        $seenPaths[$pathKey] = $true
+    }
+
+    Add-StartupCheck -Name 'manifest_shape' -Status 'passed' -Detail @{ schemaVersion = $Manifest.schemaVersion; channel = $Manifest.channel; payloadVersion = $Manifest.payloadVersion; handoffMode = $Manifest.handoffMode; basePath = $Manifest.basePath; mainEntry = $Manifest.mainEntry; fileCount = $Manifest.files.Count }
 }
 
 function Assert-SafeRelativePath {
-    param([string] $Path)
+    param(
+        [string] $Path,
+        [string] $Root = $script:PayloadRoot
+    )
 
     if ([string]::IsNullOrWhiteSpace($Path)) {
-        Stop-Startup -Reason 'path_empty' -Message 'payload 文件路径为空。'
+        Stop-Startup -Reason 'payload_path_invalid' -Message 'payload 文件路径为空。'
     }
-    if ([System.IO.Path]::IsPathRooted($Path) -or $Path.Contains('..')) {
-        Stop-Startup -Reason 'path_unsafe' -Message 'payload 文件路径不安全。'
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        Stop-Startup -Reason 'payload_path_invalid' -Message 'payload 文件路径不能是绝对路径。'
+    }
+
+    $rootedPath = Join-Path $Root $Path
+    if (-not (Test-PathInsideRoot -Path $rootedPath -Root $Root)) {
+        Stop-Startup -Reason 'payload_path_invalid' -Message 'payload 文件路径必须留在 payload 目录内。'
     }
 }
 
@@ -749,7 +830,6 @@ function Sync-Payload {
     param($Manifest)
 
     Assert-ManifestShape -Manifest $Manifest
-    Assert-SafeRelativePath -Path $Manifest.basePath
     Write-StartupState -Stage $script:StartupStages.Payload -Extra @{ payloadVersion = $Manifest.payloadVersion }
 
     $verifiedFiles = @{}
@@ -771,8 +851,13 @@ function Sync-Payload {
 
         $relativeSource = Join-Path $Manifest.basePath $file.path
         $stagingDestination = Join-Path $stagingPayloadRoot $file.path
-        Copy-LocalFileOrDownload -RelativePath $relativeSource -DestinationPath $stagingDestination -Kind 'payload'
-        Add-StartupCheck -Name 'payload_acquired' -Status 'passed' -Detail @{ path = $file.path; destination = $stagingDestination; staging = $true }
+        try {
+            Copy-LocalFileOrDownload -RelativePath $relativeSource -DestinationPath $stagingDestination -Kind 'payload'
+            Add-StartupCheck -Name 'payload_acquired' -Status 'passed' -Detail @{ path = $file.path; destination = $stagingDestination; staging = $true }
+        } catch {
+            Add-StartupCheck -Name 'payload_acquired' -Status 'failed' -Detail @{ path = $file.path; destination = $stagingDestination; error = $_.Exception.Message }
+            Stop-Startup -Reason 'payload_download_failed' -Message "payload 文件 $($file.path) 获取失败。"
+        }
 
         $hashMaxAttempts = $script:PayloadRepairRebuildRetryCount + 1
         for ($hashAttempt = 1; $hashAttempt -le $hashMaxAttempts; $hashAttempt++) {
@@ -788,7 +873,12 @@ function Sync-Payload {
             }
 
             Add-StartupCheck -Name 'payload_repair_rebuild' -Status 'attempted' -Detail @{ path = $file.path; repairAttempt = $hashAttempt; repairMaxAttempts = $script:PayloadRepairRebuildRetryCount }
-            Copy-LocalFileOrDownload -RelativePath $relativeSource -DestinationPath $stagingDestination -Kind 'payload'
+            try {
+                Copy-LocalFileOrDownload -RelativePath $relativeSource -DestinationPath $stagingDestination -Kind 'payload'
+            } catch {
+                Add-StartupCheck -Name 'payload_repair_rebuild' -Status 'failed' -Detail @{ path = $file.path; error = $_.Exception.Message }
+                Stop-Startup -Reason 'payload_download_failed' -Message "payload 文件 $($file.path) 重新获取失败。"
+            }
         }
         $verifiedFiles[$file.path] = $true
     }
@@ -832,19 +922,19 @@ function Sync-Payload {
 function Test-EntryLandingShape {
     param([string] $MainEntryPath)
 
-    $resolvedPayloadRoot = [System.IO.Path]::GetFullPath($script:PayloadRoot)
-    $resolvedMainEntryPath = [System.IO.Path]::GetFullPath($MainEntryPath)
-    $isUnderPayloadRoot = $resolvedMainEntryPath.StartsWith($resolvedPayloadRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    $resolvedPayloadRoot = Get-NormalizedPath -Path $script:PayloadRoot
+    $resolvedMainEntryPath = Get-NormalizedPath -Path $MainEntryPath
+    $isUnderPayloadRoot = Test-PathInsideRoot -Path $resolvedMainEntryPath -Root $resolvedPayloadRoot
     $extension = [System.IO.Path]::GetExtension($resolvedMainEntryPath)
 
     if (-not $isUnderPayloadRoot) {
         Add-StartupCheck -Name 'entry_landing_shape' -Status 'failed' -Detail @{ mainEntryPath = $resolvedMainEntryPath; payloadRoot = $resolvedPayloadRoot; reason = 'outside_payload_root' }
-        Stop-Startup -Reason 'entry_landing_outside_payload_root' -Message 'payload 主入口不在本地 payload 目录内。'
+        Stop-Startup -Reason 'entry_shape_invalid' -Message 'payload 主入口不在本地 payload 目录内。'
     }
 
     if ($extension -ne '.cmd') {
         Add-StartupCheck -Name 'entry_landing_shape' -Status 'failed' -Detail @{ mainEntryPath = $resolvedMainEntryPath; extension = $extension; reason = 'not_cmd_entry' }
-        Stop-Startup -Reason 'entry_landing_not_cmd' -Message 'payload 主入口不是 CMD 文件。'
+        Stop-Startup -Reason 'entry_shape_invalid' -Message 'payload 主入口不是 CMD 文件。'
     }
 
     Add-StartupCheck -Name 'entry_landing_shape' -Status 'passed' -Detail @{
@@ -904,7 +994,7 @@ function Start-AdminCmdHandoff {
         } catch {
             Add-StartupCheck -Name 'admin_cmd_handoff' -Status 'failed' -Detail @{ cmdPath = $cmdPath; mainEntryPath = $MainEntryPath; attempt = $attempt; maxAttempts = $maxAttempts }
             if ($attempt -ge $maxAttempts) {
-                Stop-Startup -Reason 'handoff_denied_or_failed' -Message '无法打开管理员 CMD 主窗口。'
+                Stop-Startup -Reason 'handoff_failed' -Message '无法打开管理员 CMD 主窗口。'
             }
         }
     }
@@ -924,8 +1014,8 @@ function Start-AdminCmdHandoff {
         }
     }
 
-    Add-StartupCheck -Name 'handoff_accepted' -Status 'failed' -Detail @{ timeoutSeconds = 30; statePath = $script:StatePath }
-    Stop-Startup -Reason 'handoff_accept_timeout' -Message '管理员 CMD 主窗口未在 30 秒内确认接管。'
+    Add-StartupCheck -Name 'handoff_accepted' -Status 'failed' -Detail @{ timeoutSeconds = $script:HandoffAcceptedWaitSeconds; statePath = $script:StatePath }
+    Stop-Startup -Reason 'handoff_timeout' -Message "管理员 CMD 主窗口未在 $script:HandoffAcceptedWaitSeconds 秒内确认接管。"
 }
 
 Assert-StartupBudget -Checkpoint 'before_host_normalization'

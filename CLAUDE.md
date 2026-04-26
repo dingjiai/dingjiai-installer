@@ -76,10 +76,17 @@ irm https://get.dingjiai.com/win.ps1 | iex
 - The bootstrap should do only enough work to validate startup, retrieve verified payload files, and hand off to the dedicated main UI.
 - Keep `handoffAccepted` semantically minimal: it means the administrator `cmd.exe` entered the verified local payload entry and accepted control of the main menu flow.
 - Startup hard gates currently require Windows build 17763+ and PowerShell 5.1+.
-- Startup failures should use the unified shape: reason, suggested next action, and local log path when available.
+- Startup failures should use the unified shape: reason, message, suggestion, stage, log path, and startup ID when available.
+- Current startup trust boundary is explicit: `win.ps1` is the remote bootstrap trust root; manifest SHA-256 checks provide payload integrity but are not a complete independent authenticity/signature chain.
+- Do not add fake or test-only manifest signing to production-facing startup code; real manifest signing requires a separate confirmed release-key and signing workflow.
 - Menu code controls flow only; dependency logic belongs in flow/checkpoint helpers.
 - Windows menu flows live under `docs/installer/windows/payload/flows/windows/`; shared Windows helpers live under `docs/installer/windows/payload/lib/windows/`; task shims under `tasks/*.cmd` must stay thin.
+- Implemented checkpoint CMD shims should call `lib/windows/checkpoint_runner.cmd`; the runner is a thin bridge only and must not contain dependency business logic.
 - Core dependency checkpoints use the same model: discovery, allowance/decision, action, new-shell validation, optional component configuration, and final re-validation.
+- Windows checkpoint helpers should share the `checkpoint.v1` top-level result contract: contractVersion, component, flow, checkpoint, mutationAllowed, sampleMode, actionMode, outputMode, testScenario, exitCodeContract, tool-specific state, and decision.
+- Checkpoint decision objects should include status, decision, reason, nextAction, and exitCode.
+- Current checkpoint exit code contract: `0` can continue, `11` not implemented, `20` missing cmd bridge/helper, `60` business/dependency blocker, `70` helper/runtime/contract failure.
+- In the current report-only stage, dependency checkpoints must not let non-healthy dependency states continue; `winget` and Git non-healthy states return `60` until a real install/repair/upgrade mutation path is implemented and self-checked.
 - Each component must settle its own PATH, active version, scope, and health state before the next component begins.
 - For core dependency tools, prefer one project-approved best-practice path with minimal branching and project-defined trust checks.
 - The current install order is: `winget`, App Installer download staging, Git, Claude, default enhancement layer, Claude product configuration, final validation.
@@ -121,9 +128,9 @@ irm https://get.dingjiai.com/win.ps1 | iex
 ## Current stage rule
 - The repository is in a Windows startup and checkpoint-sample hardening stage.
 - The first-stage implementation baseline is the MAS-inspired `manifest + payload + administrator cmd.exe handoff` startup path described in `notes/architecture/启动阶段（一次性）.md`.
-- `winget` and Git checkpoints currently perform discovery/diagnosis/decision output only and must not install, repair, modify PATH, edit registry, or write user configuration.
+- `winget` and Git checkpoints currently perform discovery/diagnosis/decision output only and must not install, repair, modify PATH, edit registry, or write user configuration; their non-healthy decisions are dependency blockers and return exit code `60`.
 - The App Installer download checkpoint is download-only staging: it defaults to planned/no-download, confines downloads/results to the user-local installer root, bounds retry/timeout inputs, cleans or invalidates hash-mismatched partial files, and must not execute, install, unpack, edit PATH, edit registry, or write user configuration.
-- Claude, enhancement, update, and uninstall checkpoint actions remain placeholders.
+- Claude, enhancement, update, uninstall, and other unimplemented checkpoint actions must fail closed as `NOT_IMPLEMENTED` with exit code `11` rather than returning success.
 - Run `docs/installer/windows/check-startup.ps1` after changing Windows startup payload files, `manifest.json`, runtime gates, helper contracts, or failure-output contracts.
 
 ## Claude CLI baseline documentation rule

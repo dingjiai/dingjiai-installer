@@ -21,6 +21,7 @@ $script:ActionMode = 'report-only'
 $script:AllowedStatuses = @('healthy', 'missing', 'command_broken', 'command_timeout', 'source_broken', 'source_timeout', 'source_missing', 'source_untrusted', 'helper_failed')
 $script:AllowedDecisions = @('skip', 'install', 'repair', 'abort')
 $script:DecisionReportExitCode = 0
+$script:DependencyBlockerExitCode = 60
 $script:OfficialWingetSourceUrl = 'https://cdn.winget.microsoft.com/cache'
 
 function Write-Section {
@@ -264,25 +265,25 @@ function Get-TestScenarioExpectation {
             return [pscustomobject] @{ status = 'healthy'; decision = 'skip'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $true; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $true; officialSourceNameMatched = $true; officialSourceUrlMatched = $true }
         }
         'missing' {
-            return [pscustomobject] @{ status = 'missing'; decision = 'install'; exitCode = 0; commandFound = $false; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'missing'; decision = 'install'; exitCode = $script:DependencyBlockerExitCode; commandFound = $false; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
         }
         'version_failed' {
-            return [pscustomobject] @{ status = 'command_broken'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'command_broken'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $false; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
         }
         'version_timeout' {
-            return [pscustomobject] @{ status = 'command_timeout'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $false; versionTimedOut = $true; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'command_timeout'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $false; versionTimedOut = $true; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
         }
         'source_failed' {
-            return [pscustomobject] @{ status = 'source_broken'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 1; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'source_broken'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 1; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
         }
         'source_timeout' {
-            return [pscustomobject] @{ status = 'source_timeout'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $true; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'source_timeout'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = $null; sourceTimedOut = $true; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
         }
         'source_missing' {
-            return [pscustomobject] @{ status = 'source_missing'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'source_missing'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $false; officialSourceUrlMatched = $false }
         }
         'source_untrusted' {
-            return [pscustomobject] @{ status = 'source_untrusted'; decision = 'repair'; exitCode = 0; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $true; officialSourceUrlMatched = $false }
+            return [pscustomobject] @{ status = 'source_untrusted'; decision = 'repair'; exitCode = $script:DependencyBlockerExitCode; commandFound = $true; versionOk = $true; versionTimedOut = $false; sourceOk = $false; sourceExitCode = 0; sourceTimedOut = $false; officialSourceFound = $false; officialSourceNameMatched = $true; officialSourceUrlMatched = $false }
         }
     }
 
@@ -471,7 +472,7 @@ function Get-WingetDecision {
             decision = 'install'
             reason = '未发现 winget.exe，后续版本应进入 App Installer 安装路径。'
             nextAction = '当前样板只报告 install 决策，不执行安装。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -482,7 +483,7 @@ function Get-WingetDecision {
                 decision = 'repair'
                 reason = '已发现 winget.exe，但 winget --version 在超时时间内没有返回。'
                 nextAction = '当前样板只报告 repair 决策，不执行修复。'
-                exitCode = 0
+                exitCode = $script:DependencyBlockerExitCode
             }
         }
 
@@ -491,7 +492,7 @@ function Get-WingetDecision {
             decision = 'repair'
             reason = '已发现 winget.exe，但 winget --version 无法正常返回。'
             nextAction = '当前样板只报告 repair 决策，不执行修复。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -502,7 +503,7 @@ function Get-WingetDecision {
                 decision = 'repair'
                 reason = 'winget 可运行，但 winget source list 在超时时间内没有返回。'
                 nextAction = '当前样板只报告 repair 决策，不执行 source 修复。'
-                exitCode = 0
+                exitCode = $script:DependencyBlockerExitCode
             }
         }
 
@@ -512,7 +513,7 @@ function Get-WingetDecision {
                 decision = 'repair'
                 reason = 'winget 可运行，但 winget source list 返回失败。'
                 nextAction = '当前样板只报告 repair 决策，不执行 source 修复。'
-                exitCode = 0
+                exitCode = $script:DependencyBlockerExitCode
             }
         }
 
@@ -522,7 +523,7 @@ function Get-WingetDecision {
                 decision = 'repair'
                 reason = 'winget source list 中存在 winget source，但 URL 不是项目认可的官方地址。'
                 nextAction = '当前样板只报告 repair 决策，不执行 source reset 或 add。'
-                exitCode = 0
+                exitCode = $script:DependencyBlockerExitCode
             }
         }
 
@@ -531,7 +532,7 @@ function Get-WingetDecision {
             decision = 'repair'
             reason = 'winget 可运行，但 winget source list 未发现项目认可的官方 winget source。'
             nextAction = '当前样板只报告 repair 决策，不执行 source 添加。'
-            exitCode = 0
+            exitCode = $script:DependencyBlockerExitCode
         }
     }
 
@@ -546,7 +547,8 @@ function Get-WingetDecision {
 
 function New-ExitCodeContract {
     return [pscustomobject] @{
-        decision = $script:DecisionReportExitCode
+        healthy = $script:DecisionReportExitCode
+        dependencyBlocker = $script:DependencyBlockerExitCode
         helperFailure = $script:HelperFailureExitCode
     }
 }
@@ -656,7 +658,8 @@ function Write-WingetTextResult {
     Write-Field 'outputMode' $Result.outputMode
     Write-Field 'testScenario' $Result.testScenario
     Write-Field 'probeTimeoutSeconds' ([string] $Result.probeTimeoutSeconds)
-    Write-Field 'decisionExitCode' ([string] $Result.exitCodeContract.decision)
+    Write-Field 'healthyExitCode' ([string] $Result.exitCodeContract.healthy)
+    Write-Field 'dependencyBlockerExitCode' ([string] $Result.exitCodeContract.dependencyBlocker)
     Write-Field 'helperFailureExitCode' ([string] $Result.exitCodeContract.helperFailure)
     Write-Host '当前样板只做发现、诊断和决策，不会安装、修复或改写系统。'
 
@@ -722,8 +725,11 @@ function Test-ResultContract {
     if ($null -eq $Result.exitCodeContract) {
         throw 'winget result contract violation: exit code contract is null'
     }
-    if ($Result.exitCodeContract.decision -ne $script:DecisionReportExitCode) {
-        throw 'winget result contract violation: decision exit code contract must be 0'
+    if ($Result.exitCodeContract.healthy -ne $script:DecisionReportExitCode) {
+        throw 'winget result contract violation: healthy exit code contract must be 0'
+    }
+    if ($Result.exitCodeContract.dependencyBlocker -ne $script:DependencyBlockerExitCode) {
+        throw 'winget result contract violation: dependency blocker exit code contract must be 60'
     }
     if ($Result.exitCodeContract.helperFailure -ne $script:HelperFailureExitCode) {
         throw 'winget result contract violation: helper failure exit code contract must be 70'
@@ -771,8 +777,14 @@ function Test-ResultContract {
         }
         return
     }
-    if ($Result.decision.exitCode -ne $script:DecisionReportExitCode) {
-        throw 'winget result contract violation: decision report exit code must be 0'
+    if ($Result.decision.status -eq 'healthy') {
+        if ($Result.decision.exitCode -ne $script:DecisionReportExitCode) {
+            throw 'winget result contract violation: healthy exit code must be 0'
+        }
+        return
+    }
+    if ($Result.decision.exitCode -ne $script:DependencyBlockerExitCode) {
+        throw 'winget result contract violation: dependency blocker exit code must be 60'
     }
 }
 

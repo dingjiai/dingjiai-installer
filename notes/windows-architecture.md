@@ -1,4 +1,4 @@
-﻿# Windows installer architecture notes
+# Windows installer architecture notes
 
 This file records supporting architecture decisions for the Windows-first installer. The current rebuild source of truth is the newer architecture discussion under `notes/architecture/`, especially `notes/architecture/启动阶段（一次性）.md`.
 
@@ -47,6 +47,45 @@ Current minimal v1 startup and placeholder business layout:
 - keep `docs/CNAME` for the dedicated install subdomain when GitHub Pages is configured
 - keep design Markdown under `notes/`; `docs/` should stay a publishing root for runnable assets
 - do not reuse the removed old prototype payload layout as the current baseline
+
+## Checkpoint v1 contract and flow gates
+
+Current Windows checkpoint samples use a shared `checkpoint.v1` result envelope. Tool-specific details may live in their own child blocks, but the top-level shape should stay stable so later tools can reuse the same runner and self-checks.
+
+Required top-level fields for checkpoint helpers:
+
+- `contractVersion`: currently `checkpoint.v1`
+- `component`
+- `flow`
+- `checkpoint`
+- `mutationAllowed`
+- `sampleMode`
+- `actionMode`
+- `outputMode`
+- `testScenario`
+- `exitCodeContract`
+- a tool-specific discovery/state block such as `discovery`, `source`, or `download`
+- `decision`
+
+Required `decision` fields:
+
+- `status`
+- `decision`
+- `reason`
+- `nextAction`
+- `exitCode`
+
+Current exit code contract:
+
+- `0`: checkpoint produced a valid report/decision and the flow may continue.
+- `11`: checkpoint is explicitly not implemented.
+- `20`: cmd bridge/helper file is missing.
+- `60`: business/dependency condition blocks progress, such as download, hash failure, or a non-healthy report-only dependency checkpoint.
+- `70`: helper/runtime/contract failure.
+
+Flow entries should stay simple: call checkpoints in order and immediately return any non-zero `errorlevel`. Placeholder checkpoints must fail closed with `NOT_IMPLEMENTED` and `exit /b 11`; they must not return success or make a flow look complete.
+
+`docs/installer/windows/payload/lib/windows/checkpoint_runner.cmd` is the shared CMD-to-PowerShell bridge for implemented checkpoint samples. It reads `DINGJIAI_CHECKPOINT_HELPER`, `DINGJIAI_CHECKPOINT_FLOW`, and `DINGJIAI_CHECKPOINT_NAME`, verifies the helper exists, invokes the helper with the fixed `-FlowName` and `-CheckpointName`, forwards remaining arguments unchanged, and propagates the helper exit code. The runner should stay thin; discovery, decision, download, install, repair, and validation logic belongs in the PowerShell checkpoint helper.
 
 ## Layered Windows architecture
 
@@ -146,8 +185,8 @@ Current intended checkpoint order for `安装 Claude 和依赖` is:
 
 `winget` is currently treated as the base installer capability for the whole install path.
 If `winget` is missing or unhealthy, that checkpoint should be resolved before Git or Claude work begins.
-The first `winget` implementation is intentionally a read-only sample and the current checkpoint contract reference: `10_winget.cmd` only bridges into `lib/windows/winget.ps1`, and the helper only performs discovery, diagnosis, and decision output. It does not install, repair, reset/add/update sources, reconfigure PATH, edit registry, write user configuration, or otherwise mutate machine state. Its result shape is locked as `checkpoint.v1` with `mutationAllowed`, `sampleMode = discovery-diagnose-decision-only`, `actionMode = report-only`, `exitCodeContract`, structured `discovery`, `diagnosis`, `decision`, `action`, `validation`, and `audit` sections. Structured discovery records environment facts, command resolution, version probe, source probe, and official-source trust facts. `winget source list` must confirm the official `winget` source URL `https://cdn.winget.microsoft.com/cache` before the checkpoint is considered healthy. Statuses are intentionally specific: `healthy`, `missing`, `command_broken`, `command_timeout`, `source_broken`, `source_timeout`, `source_missing`, `source_untrusted`, and `helper_failed`; decisions remain `skip`, `install`, `repair`, or `abort`. Decision reports return `0`; helper/runtime failures return `70`. Optional `-ResultPath` JSON output is confined under `%LOCALAPPDATA%\dingjiai-installer` (or the helper's local fallback root) and bad paths become `helper_failed` without writing outside that root. Deterministic `-TestScenario` inputs cover healthy, missing, version failure/timeout, source failure/timeout, missing source, untrusted source, and helper failure, and the helper self-validates scenario expectations before output through `Get-TestScenarioExpectation` and `Test-TestScenarioContract`. The CMD checkpoint bridge forwards helper arguments, so these contracts can be tested through the same bridge used by the install flow.
-The first Git implementation is also intentionally a read-only sample: `20_git.cmd` only bridges into `lib/windows/git.ps1`, and the helper only performs discovery, placeholder trust diagnosis, and decision output. It does not install, repair, upgrade, reinstall, reconfigure PATH, edit registry, or mutate machine state yet. Current Git trust checks use the placeholder fields in `notes/claude-cli-baseline.md`: minimum version `2.40.0`, Git for Windows version marker `windows.`, trusted active path shapes, and package identity `Git.Git`. Its probe commands are timeout-bounded, stdout/stderr are read asynchronously, timeout state is reported, deterministic `-TestScenario` inputs cover healthy and broken paths, and `-OutputMode Json` plus optional `-ResultPath` provide the same machine-readable report shape as the `winget` sample.
+The first `winget` implementation is intentionally a read-only sample and the current checkpoint contract reference: `10_winget.cmd` only bridges into `lib/windows/winget.ps1`, and the helper only performs discovery, diagnosis, and decision output. It does not install, repair, reset/add/update sources, reconfigure PATH, edit registry, write user configuration, or otherwise mutate machine state. Its result shape is locked as `checkpoint.v1` with `mutationAllowed`, `sampleMode = discovery-diagnose-decision-only`, `actionMode = report-only`, `exitCodeContract`, structured `discovery`, `diagnosis`, `decision`, `action`, `validation`, and `audit` sections. Structured discovery records environment facts, command resolution, version probe, source probe, and official-source trust facts. `winget source list` must confirm the official `winget` source URL `https://cdn.winget.microsoft.com/cache` before the checkpoint is considered healthy. Statuses are intentionally specific: `healthy`, `missing`, `command_broken`, `command_timeout`, `source_broken`, `source_timeout`, `source_missing`, `source_untrusted`, and `helper_failed`; decisions remain `skip`, `install`, `repair`, or `abort`. Healthy reports return `0`; non-healthy dependency states return `60`; helper/runtime failures return `70`. Optional `-ResultPath` JSON output is confined under `%LOCALAPPDATA%\dingjiai-installer` (or the helper's local fallback root) and bad paths become `helper_failed` without writing outside that root. Deterministic `-TestScenario` inputs cover healthy, missing, version failure/timeout, source failure/timeout, missing source, untrusted source, and helper failure, and the helper self-validates scenario expectations before output through `Get-TestScenarioExpectation` and `Test-TestScenarioContract`. The CMD checkpoint bridge forwards helper arguments, so these contracts can be tested through the same bridge used by the install flow.
+The first Git implementation is also intentionally a read-only sample: `20_git.cmd` only bridges into `lib/windows/git.ps1`, and the helper only performs discovery, placeholder trust diagnosis, and decision output. It does not install, repair, upgrade, reinstall, reconfigure PATH, edit registry, or mutate machine state yet. Current Git trust checks use the placeholder fields in `notes/claude-cli-baseline.md`; non-healthy Git states return `60` while the helper remains report-only: minimum version `2.40.0`, Git for Windows version marker `windows.`, trusted active path shapes, and package identity `Git.Git`. Its probe commands are timeout-bounded, stdout/stderr are read asynchronously, timeout state is reported, deterministic `-TestScenario` inputs cover healthy and broken paths, non-healthy dependency states return `60`, and `-OutputMode Json` plus optional `-ResultPath` provide the same machine-readable report shape as the `winget` sample.
 The first download implementation is intentionally a download-only staging sample: `15_app_installer_download.cmd` bridges into `lib/windows/download.ps1` for the App Installer artifact and defaults to planned/no-download output. Real download requires explicit `-AllowDownload`, HTTPS, an allowed host list, and an expected SHA-256. The helper downloads only under `%LOCALAPPDATA%\dingjiai-installer\downloads\staging` through a `.part` file, verifies hash before promotion, and does not execute installers, unpack to system locations, edit PATH, edit registry, or write user configuration. Hash mismatches must delete the partial file or report cleanup failure, optional result files must stay under `%LOCALAPPDATA%\dingjiai-installer`, and retry/timeout inputs are bounded (`RetryCount` 0-5, `TimeoutSeconds` 5-120). Its exit code contract is: planned/downloaded success returns `0`; download boundary failures return `60`; helper/runtime failures return `70`.
 The current first-stage implementation baseline is the startup handoff path: thin public bootstrap, local workspace, manifest-defined payload retrieval, staging-based payload verification, startup state recording, and administrator `cmd.exe` handoff with `handoffAccepted`. Dependency checkpoint actions should be wired only after their sample contracts stay stable.
 
@@ -224,7 +263,7 @@ For current framework work:
 - Git discovery should currently keep all planned fields as required inputs.
 - Git allowance should currently reduce to `skip`, `repair`, `upgrade`, `install`, or `reinstall` based on trusted identity, minimum version, and active command resolution.
 - Git install and upgrade should currently assume the single `winget` package path through `Git.Git`.
-- The current Git sample reports status and decision only; action decisions such as `install`, `repair`, `upgrade`, or `reinstall` are not executed yet. Its status and decision enums are locked in the helper and validated before output.
+- The current Git sample reports status and decision only; action decisions such as `install`, `repair`, `upgrade`, or `reinstall` are not executed yet. Its status, decision enums, and non-healthy exit code `60` gate are locked in the helper and validated before output.
 
 The main Windows dependency chain is expected to include:
 

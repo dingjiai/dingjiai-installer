@@ -2,8 +2,7 @@
 chcp 65001 >NUL
 setlocal EnableExtensions
 
-echo [Claude 产品配置 checkpoint]
-echo 未来用于引导用户输入必要配置并写入 Claude 配置。
-echo 当前 checkpoint 尚未接入真实逻辑。
-echo.
-exit /b 0
+echo [install/50_config] NOT_IMPLEMENTED
+echo 当前 checkpoint 尚未实现，不会安装、修复、卸载或修改系统。
+echo 后续版本接入真实逻辑前，必须先补齐 checkpoint.v1 契约和自检。
+exit /b 11
