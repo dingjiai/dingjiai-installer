@@ -726,7 +726,7 @@ function Copy-LocalFileOrDownload {
 
     $timeoutSeconds = if ($Kind -eq 'manifest') { $script:ManifestRequestTimeoutSeconds } else { $script:PayloadFileRequestTimeoutSeconds }
     $retryCount = if ($Kind -eq 'manifest') { $script:ManifestDownloadRetryCount } else { $script:PayloadFileDownloadRetryCount }
-    $url = "$($script:BaseUrl)/$($RelativePath -replace '\', '/')"
+    $url = "$($script:BaseUrl)/$(([string] $RelativePath).Replace('\', '/'))"
 
     for ($attempt = 1; $attempt -le ($retryCount + 1); $attempt++) {
         try {
