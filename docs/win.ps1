@@ -837,7 +837,7 @@ function Assert-ManifestShape {
             Stop-ManifestShape -Detail 'file_required_invalid' -Message "manifest 文件 $($file.path) 的 required 必须是布尔值。"
         }
 
-        $pathKey = ([string] $file.path).Replace('', '/').ToLowerInvariant()
+        $pathKey = ([string] $file.path).Replace('\', '/').ToLowerInvariant()
         if ($seenPaths.ContainsKey($pathKey)) {
             Stop-ManifestShape -Detail 'file_path_duplicate' -Message "manifest 文件路径重复：$($file.path)。"
         }

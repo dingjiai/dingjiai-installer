@@ -226,6 +226,47 @@ function Test-StartupAcceptBehavior {
     }
 }
 
+function Test-WinBootstrapManifestShapeBehavior {
+    param([string] $WinEntryPath)
+
+    if (-not (Test-Path -LiteralPath $WinEntryPath -PathType Leaf)) {
+        return
+    }
+
+    $scriptText = Get-Content -LiteralPath $WinEntryPath -Raw
+    $start = $scriptText.IndexOf('function Test-Sha256Text')
+    $end = $scriptText.IndexOf('function Assert-SafeRelativePath')
+    if ($start -lt 0 -or $end -le $start) {
+        Fail 'win.ps1 manifest shape behavior functions are discoverable'
+        return
+    }
+
+    $snippet = $scriptText.Substring($start, $end - $start)
+    $snippet += @'
+$ErrorActionPreference = 'Stop'
+$script:StartupChecks = @()
+function Add-StartupCheck { param([string] $Name, [string] $Status, [hashtable] $Detail = @{}) }
+function Stop-Startup { param([string] $Reason, [string] $Message) throw "$Reason|$Message" }
+$manifest = [pscustomobject] @{
+    schemaVersion = 1
+    channel = 'v1-startup'
+    payloadVersion = 'self-check'
+    basePath = 'payload'
+    mainEntry = 'main.cmd'
+    handoffMode = 'admin-cmd'
+    files = @(
+        [pscustomobject] @{ path = 'main.cmd'; sha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; required = $true },
+        [pscustomobject] @{ path = 'lib\windows\startup_accept.ps1'; sha256 = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'; required = $true }
+    )
+}
+Assert-ManifestShape -Manifest $manifest
+'@
+
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($snippet))
+    $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -NoNewWindow -Wait -PassThru
+    Need ($process.ExitCode -eq 0) 'win.ps1 manifest shape accepts slash and backslash payload paths without runtime errors'
+}
+
 $manifestPath = Join-Path $PSScriptRoot 'manifest.json'
 $payloadRoot = Join-Path $PSScriptRoot 'payload'
 $winEntryPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'win.ps1'
@@ -239,6 +280,7 @@ if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
     Need ($winEntry.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'win.ps1 sets startup downloads to TLS 1.2 rather than preserving older protocols'
     Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'win.ps1 detects CMD AutoRun before administrator handoff'
     Need (-not ($winEntry -match 'reg(\.exe)?\s+(add|delete).*AutoRun')) 'win.ps1 does not modify CMD AutoRun registry values'
+    Test-WinBootstrapManifestShapeBehavior -WinEntryPath $winEntryPath
 }
 
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
