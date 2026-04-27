@@ -934,7 +934,7 @@ function Sync-Payload {
     param($Manifest)
 
     Assert-ManifestShape -Manifest $Manifest
-    Write-StartupState -Stage $script:StartupStages.Payload -Extra @{ payloadVersion = $Manifest.payloadVersion }
+    Write-StartupState -Stage $script:StartupStages.Payload -Extra @{ payloadVersion = $Manifest.payloadVersion; manifestSha256 = (Get-FileSha256 -Path $script:ManifestPath) }
 
     $verifiedFiles = @{}
     $stagingPayloadRoot = Join-Path $script:StagingRoot ("payload-$($script:StartupId)")

@@ -293,6 +293,7 @@ if (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) {
     Need ($winEntry.Contains('已等待') -and $winEntry.Contains('Start-StartupWaitTimer') -and $winEntry.Contains('Stop-StartupWaitTimer')) 'bootstrap.ps1 shows a live wait timer during payload sync'
     Need (-not ($winEntry -match '同步启动文件 \{0\}/\{1\}')) 'bootstrap.ps1 does not expose payload file counts during startup'
     Need ($winEntry.Contains('正在打开管理员 CMD')) 'bootstrap.ps1 tells users when administrator CMD handoff is starting'
+    Need ($winEntry.Contains('manifestSha256 = (Get-FileSha256 -Path $script:ManifestPath)')) 'bootstrap.ps1 records manifest hash in startup state for deferred sync'
     Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'bootstrap.ps1 detects CMD AutoRun before administrator handoff'
     Need (-not ($winEntry -match 'reg(\.exe)?\s+(add|delete).*AutoRun')) 'bootstrap.ps1 does not modify CMD AutoRun registry values'
     Need ($winEntry.Contains('.Replace(') -and -not $winEntry.Contains('RelativePath -replace')) 'bootstrap.ps1 builds remote payload URLs without regex backslash errors'
@@ -312,8 +313,21 @@ Need ($manifest.mainEntry -eq 'main.cmd') 'manifest mainEntry is main.cmd'
 Need ($manifest.handoffMode -eq 'admin-cmd') 'manifest handoffMode is admin-cmd'
 Need ($null -ne $manifest.files -and $manifest.files.Count -gt 0) 'manifest has payload files'
 
+$startupCriticalPayloadPaths = @(
+    'main.cmd',
+    'ui.ps1',
+    'lib/windows/console_guard.ps1',
+    'lib/windows/startup_accept.ps1',
+    'lib/windows/deferred_payload_sync.ps1'
+)
+$startupCriticalPathSet = @{}
+foreach ($startupCriticalPayloadPath in $startupCriticalPayloadPaths) {
+    $startupCriticalPathSet[$startupCriticalPayloadPath] = $true
+}
+
 $seenPaths = @{}
 $mainEntrySeen = $false
+$deferredPayloadSeen = $false
 foreach ($file in $manifest.files) {
     $payloadPath = [string] $file.path
     $pathIsRelative = Test-RelativePayloadPath -Path $payloadPath
@@ -334,7 +348,13 @@ foreach ($file in $manifest.files) {
     Need (Test-Path -LiteralPath $localPath -PathType Leaf) "payload file exists: $payloadPath"
     Need (Test-Sha256Text -Value ([string] $file.sha256)) "payload file has valid sha256: $payloadPath"
     Need ($file.required -is [bool]) "payload file required is boolean: $payloadPath"
-    Need ($file.required -eq $true) "payload file is required: $payloadPath"
+    if ($startupCriticalPathSet.ContainsKey($pathKey)) {
+        Need ($file.required -eq $true) "startup-critical payload file is required: $payloadPath"
+    } else {
+        if ($file.required -eq $false) {
+            $deferredPayloadSeen = $true
+        }
+    }
 
     if (Test-Path -LiteralPath $localPath -PathType Leaf) {
         $actualHash = Get-Sha256Hex -Path $localPath
@@ -348,6 +368,10 @@ foreach ($file in $manifest.files) {
 }
 
 Need $mainEntrySeen 'manifest includes required main entry'
+Need $deferredPayloadSeen 'manifest defers non-menu payload files until task execution'
+foreach ($startupCriticalPayloadPath in $startupCriticalPayloadPaths) {
+    Need ($seenPaths.ContainsKey($startupCriticalPayloadPath)) "manifest includes startup-critical payload file: $startupCriticalPayloadPath"
+}
 
 $requiredPayloadPaths = @(
     'flows/windows/install/entry.cmd',
@@ -372,6 +396,7 @@ $requiredPayloadPaths = @(
     'flows/windows/uninstall/checkpoints/90_finalize.cmd',
     'lib/windows/checkpoint_runner.cmd',
     'lib/windows/startup_accept.ps1',
+    'lib/windows/deferred_payload_sync.ps1',
     'lib/windows/console_guard.ps1',
     'lib/windows/ui_bridge.cmd',
     'lib/windows/log.cmd',
@@ -423,7 +448,27 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need ($mainCmd.Contains('lib\windows\startup_accept.ps1')) 'main.cmd delegates handoff acceptance to startup_accept.ps1'
     Need ($mainCmd.Contains('fltmc >nul 2>nul')) 'main.cmd uses fltmc as administrator probe'
     Need ($mainCmd.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PAYLOAD_ROOT%\lib\windows\startup_accept.ps1"')) 'main.cmd invokes startup acceptance helper as a file'
+    Need ($mainCmd.Contains(':ensure_deferred_payload')) 'main.cmd has deferred payload gate before task flows'
+    Need ($mainCmd.Contains('DEFERRED_PAYLOAD_READY')) 'main.cmd skips deferred payload sync after it succeeds in the same session'
+    Need ($mainCmd.Contains('lib\windows\deferred_payload_sync.ps1')) 'main.cmd invokes deferred payload sync helper before task flows'
+    Need ($mainCmd.Contains('-StatePath "%STATE_PATH%"')) 'main.cmd passes startup state path to deferred payload sync helper'
+    foreach ($flowPathText in @('flows\windows\install\entry.cmd', 'flows\windows\update\entry.cmd', 'flows\windows\uninstall\entry.cmd')) {
+        $flowIndex = $mainCmd.IndexOf($flowPathText)
+        $gateIndex = $mainCmd.LastIndexOf('call :ensure_deferred_payload', $flowIndex)
+        Need ($flowIndex -ge 0 -and $gateIndex -ge 0 -and $gateIndex -lt $flowIndex) "main.cmd gates $flowPathText behind deferred payload sync"
+    }
     Need (-not $mainCmd.Contains('function Full([string]$Path)')) 'main.cmd no longer embeds startup acceptance PowerShell logic'
+
+    $deferredPayloadSyncPath = Join-Path $payloadRoot 'lib/windows/deferred_payload_sync.ps1'
+    Need (Test-Path -LiteralPath $deferredPayloadSyncPath -PathType Leaf) 'deferred_payload_sync.ps1 helper exists'
+    Need (Test-Utf8Bom -Path $deferredPayloadSyncPath) 'deferred_payload_sync.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $deferredPayloadSyncPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $deferredPayloadSyncPath
+        $deferredPayloadSync = Get-Content -LiteralPath $deferredPayloadSyncPath -Raw
+        Need ($deferredPayloadSync.Contains('manifestSha256') -and $deferredPayloadSync.Contains('Assert-ManifestBoundToStartupState')) 'deferred_payload_sync.ps1 binds manifest to startup state hash'
+        Need ($deferredPayloadSync.Contains('ReparsePoint') -and $deferredPayloadSync.Contains('Assert-NoReparsePointInPath')) 'deferred_payload_sync.ps1 rejects reparse points in payload paths'
+        Need ($deferredPayloadSync.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'deferred_payload_sync.ps1 uses TLS 1.2 for deferred downloads'
+    }
 
     $startupAcceptPath = Join-Path $payloadRoot 'lib/windows/startup_accept.ps1'
     Need (Test-Path -LiteralPath $startupAcceptPath -PathType Leaf) 'startup_accept.ps1 helper exists'

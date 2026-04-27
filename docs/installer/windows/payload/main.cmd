@@ -10,6 +10,7 @@ set "PAYLOAD_ROOT="
 set "MAIN_ENTRY_PATH="
 set "SOURCE="
 set "HANDOFF_MODE="
+set "DEFERRED_PAYLOAD_READY="
 
 :parse_args
 if "%~1"=="" goto after_parse
@@ -105,6 +106,8 @@ goto main_menu
 :flow_install
 cls
 call :render_ui install
+call :ensure_deferred_payload
+if errorlevel 1 goto main_menu
 call "%PAYLOAD_ROOT%\flows\windows\install\entry.cmd"
 echo(
 pause
@@ -114,6 +117,8 @@ goto main_menu
 :flow_update
 cls
 call :render_ui update
+call :ensure_deferred_payload
+if errorlevel 1 goto main_menu
 call "%PAYLOAD_ROOT%\flows\windows\update\entry.cmd"
 echo(
 pause
@@ -123,11 +128,26 @@ goto main_menu
 :flow_uninstall
 cls
 call :render_ui uninstall
+call :ensure_deferred_payload
+if errorlevel 1 goto main_menu
 call "%PAYLOAD_ROOT%\flows\windows\uninstall\entry.cmd"
 echo(
 pause
 cls
 goto main_menu
+
+:ensure_deferred_payload
+if "%DEFERRED_PAYLOAD_READY%"=="1" exit /b 0
+echo 正在准备启动文件，请稍等...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PAYLOAD_ROOT%\lib\windows\deferred_payload_sync.ps1" -WorkspaceRoot "%WORKSPACE_ROOT%" -PayloadRoot "%PAYLOAD_ROOT%" -ManifestPath "%WORKSPACE_ROOT%\manifest.json" -StatePath "%STATE_PATH%" -BaseUrl "https://get.dingjiai.com/installer/windows"
+if errorlevel 1 goto deferred_payload_failed
+set "DEFERRED_PAYLOAD_READY=1"
+exit /b 0
+
+:deferred_payload_failed
+echo 启动文件准备失败，请检查网络后重试。
+pause
+exit /b 1
 
 :render_ui
 if not exist "%PAYLOAD_ROOT%\ui.ps1" goto ui_failed
