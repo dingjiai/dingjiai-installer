@@ -879,8 +879,6 @@ function Sync-Payload {
     Write-StartupState -Stage $script:StartupStages.Payload -Extra @{ payloadVersion = $Manifest.payloadVersion }
 
     $verifiedFiles = @{}
-    $requiredFileCount = @($Manifest.files | Where-Object { $_.required -eq $true }).Count
-    $syncedFileCount = 0
     $stagingPayloadRoot = Join-Path $script:StagingRoot ("payload-$($script:StartupId)")
     if (Test-Path -LiteralPath $stagingPayloadRoot) {
         Remove-Item -LiteralPath $stagingPayloadRoot -Recurse -Force
@@ -896,9 +894,6 @@ function Sync-Payload {
         if ([string]::IsNullOrWhiteSpace($file.sha256)) {
             Stop-Startup -Reason 'payload_hash_missing' -Message "payload 文件 $($file.path) 缺少 hash。"
         }
-
-        $syncedFileCount++
-        Write-StartupProgress ("同步启动文件 {0}/{1}..." -f $syncedFileCount, $requiredFileCount)
 
         $relativeSource = Join-Path $Manifest.basePath $file.path
         $stagingDestination = Join-Path $stagingPayloadRoot $file.path
@@ -1094,7 +1089,7 @@ Assert-StartupBudget -Checkpoint 'before_manifest'
 Write-StartupProgress '获取启动清单...'
 $manifest = Read-Manifest
 Assert-StartupBudget -Checkpoint 'before_payload_sync'
-Write-StartupProgress '同步启动文件...'
+Write-StartupProgress '同步启动文件...请稍等'
 $mainEntryPath = Sync-Payload -Manifest $manifest
 Assert-StartupBudget -Checkpoint 'before_entry_landing_shape'
 Test-EntryLandingShape -MainEntryPath $mainEntryPath
