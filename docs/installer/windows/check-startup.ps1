@@ -288,6 +288,8 @@ if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
 if (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) {
     $winEntry = Get-Content -LiteralPath $bootstrapPath -Raw
     Need ($winEntry.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'bootstrap.ps1 sets startup downloads to TLS 1.2 rather than preserving older protocols'
+    Need ($winEntry.Contains('正在启动中，请勿关闭当前窗口')) 'bootstrap.ps1 tells users startup is in progress and not to close the window'
+    Need ($winEntry.Contains('正在打开管理员 CMD')) 'bootstrap.ps1 tells users when administrator CMD handoff is starting'
     Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'bootstrap.ps1 detects CMD AutoRun before administrator handoff'
     Need (-not ($winEntry -match 'reg(\.exe)?\s+(add|delete).*AutoRun')) 'bootstrap.ps1 does not modify CMD AutoRun registry values'
     Need ($winEntry.Contains('.Replace(') -and -not $winEntry.Contains('RelativePath -replace')) 'bootstrap.ps1 builds remote payload URLs without regex backslash errors'

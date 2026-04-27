@@ -75,6 +75,12 @@ function Add-StartupCheck {
     $script:StartupChecks += $check
 }
 
+function Write-StartupProgress {
+    param([string] $Message)
+
+    Write-Host $Message
+}
+
 function Set-StartupSecurityProtocol {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -873,6 +879,8 @@ function Sync-Payload {
     Write-StartupState -Stage $script:StartupStages.Payload -Extra @{ payloadVersion = $Manifest.payloadVersion }
 
     $verifiedFiles = @{}
+    $requiredFileCount = @($Manifest.files | Where-Object { $_.required -eq $true }).Count
+    $syncedFileCount = 0
     $stagingPayloadRoot = Join-Path $script:StagingRoot ("payload-$($script:StartupId)")
     if (Test-Path -LiteralPath $stagingPayloadRoot) {
         Remove-Item -LiteralPath $stagingPayloadRoot -Recurse -Force
@@ -888,6 +896,9 @@ function Sync-Payload {
         if ([string]::IsNullOrWhiteSpace($file.sha256)) {
             Stop-Startup -Reason 'payload_hash_missing' -Message "payload 文件 $($file.path) 缺少 hash。"
         }
+
+        $syncedFileCount++
+        Write-StartupProgress ("同步启动文件 {0}/{1}..." -f $syncedFileCount, $requiredFileCount)
 
         $relativeSource = Join-Path $Manifest.basePath $file.path
         $stagingDestination = Join-Path $stagingPayloadRoot $file.path
@@ -1058,6 +1069,10 @@ function Start-AdminCmdHandoff {
     Stop-Startup -Reason 'handoff_timeout' -Message "管理员 CMD 主窗口未在 $script:HandoffAcceptedWaitSeconds 秒内确认接管。"
 }
 
+Write-StartupProgress 'dingjiai 正在启动中，请勿关闭当前窗口。'
+Write-StartupProgress '接下来会打开管理员 CMD 窗口，请在 UAC 弹窗中点击“是”。'
+Write-StartupProgress ''
+Write-StartupProgress '检查运行环境...'
 Set-StartupSecurityProtocol
 Assert-StartupBudget -Checkpoint 'before_host_normalization'
 Test-HostNormalization
@@ -1073,12 +1088,16 @@ Test-PowerShellRuntimeHealth
 Assert-StartupBudget -Checkpoint 'before_cmd_autorun'
 Test-CmdAutoRun
 Assert-StartupBudget -Checkpoint 'before_workspace'
+Write-StartupProgress '准备本地启动目录...'
 Initialize-Workspace
 Assert-StartupBudget -Checkpoint 'before_manifest'
+Write-StartupProgress '获取启动清单...'
 $manifest = Read-Manifest
 Assert-StartupBudget -Checkpoint 'before_payload_sync'
+Write-StartupProgress '同步启动文件...'
 $mainEntryPath = Sync-Payload -Manifest $manifest
 Assert-StartupBudget -Checkpoint 'before_entry_landing_shape'
 Test-EntryLandingShape -MainEntryPath $mainEntryPath
 Assert-StartupBudget -Checkpoint 'before_handoff'
+Write-StartupProgress '正在打开管理员 CMD，请在 UAC 弹窗中点击“是”...'
 Start-AdminCmdHandoff -MainEntryPath $mainEntryPath
