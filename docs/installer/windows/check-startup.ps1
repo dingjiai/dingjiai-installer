@@ -269,18 +269,28 @@ Assert-ManifestShape -Manifest $manifest
 
 $manifestPath = Join-Path $PSScriptRoot 'manifest.json'
 $payloadRoot = Join-Path $PSScriptRoot 'payload'
-$winEntryPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'win.ps1'
+$docsRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$winEntryPath = Join-Path $docsRoot 'win.ps1'
+$bootstrapPath = Join-Path $docsRoot 'bootstrap.ps1'
 
 Need (Test-Path -LiteralPath $manifestPath -PathType Leaf) "manifest exists: $manifestPath"
 Need (Test-Path -LiteralPath $payloadRoot -PathType Container) "payload directory exists: $payloadRoot"
-Need (Test-Path -LiteralPath $winEntryPath -PathType Leaf) "Windows bootstrap exists: $winEntryPath"
+Need (Test-Path -LiteralPath $winEntryPath -PathType Leaf) "Windows public entry exists: $winEntryPath"
+Need (-not (Test-Utf8Bom -Path $winEntryPath)) 'win.ps1 has no UTF-8 BOM so irm pipe execution starts at the first PowerShell token'
+Need (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) "Windows bootstrap exists: $bootstrapPath"
+Need (Test-Utf8Bom -Path $bootstrapPath) 'bootstrap.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
 
 if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
     $winEntry = Get-Content -LiteralPath $winEntryPath -Raw
-    Need ($winEntry.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'win.ps1 sets startup downloads to TLS 1.2 rather than preserving older protocols'
-    Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'win.ps1 detects CMD AutoRun before administrator handoff'
-    Need (-not ($winEntry -match 'reg(\.exe)?\s+(add|delete).*AutoRun')) 'win.ps1 does not modify CMD AutoRun registry values'
-    Test-WinBootstrapManifestShapeBehavior -WinEntryPath $winEntryPath
+    Need ($winEntry.Contains('bootstrap.ps1') -and $winEntry.Contains('TrimStart([char] 0xFEFF)')) 'win.ps1 delegates to bootstrap.ps1 and strips remote BOM before Invoke-Expression'
+}
+
+if (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) {
+    $winEntry = Get-Content -LiteralPath $bootstrapPath -Raw
+    Need ($winEntry.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'bootstrap.ps1 sets startup downloads to TLS 1.2 rather than preserving older protocols'
+    Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'bootstrap.ps1 detects CMD AutoRun before administrator handoff'
+    Need (-not ($winEntry -match 'reg(\.exe)?\s+(add|delete).*AutoRun')) 'bootstrap.ps1 does not modify CMD AutoRun registry values'
+    Test-WinBootstrapManifestShapeBehavior -WinEntryPath $bootstrapPath
 }
 
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
@@ -824,31 +834,36 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
 }
 
 if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
-    Need (Test-Utf8Bom -Path $winEntryPath) 'win.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    Need (-not (Test-Utf8Bom -Path $winEntryPath)) 'win.ps1 has no UTF-8 BOM for irm pipe execution'
     Test-PowerShellFileSyntax -Path $winEntryPath
+}
 
-    $winEntry = Get-Content -LiteralPath $winEntryPath -Raw
-    Need ($winEntry -match '\$script:MinimumPowerShellVersion\s*=\s*\[version\]''5\.1''') 'win.ps1 requires PowerShell 5.1+'
-    Need ($winEntry -match '\$script:MinimumWindowsBuild\s*=\s*17763') 'win.ps1 requires Windows build 17763+'
-    Need ($winEntry -match 'function Get-StartupFailureSuggestion') 'win.ps1 has failure suggestion mapper'
-    Need ($winEntry -match "'handoff_failed'") 'win.ps1 maps handoff failure suggestion'
-    Need ($winEntry -match 'function Write-StartupFailureMessage') 'win.ps1 has unified failure message writer'
-    Need ($winEntry.Contains('manifest_read_failed')) 'win.ps1 uses manifest_read_failed reason'
-    Need ($winEntry.Contains('manifest_schema_invalid')) 'win.ps1 uses manifest_schema_invalid reason'
-    Need ($winEntry.Contains('payload_path_invalid')) 'win.ps1 uses payload_path_invalid reason'
-    Need ($winEntry.Contains('payload_download_failed')) 'win.ps1 uses payload_download_failed reason'
-    Need ($winEntry.Contains('entry_shape_invalid')) 'win.ps1 uses entry_shape_invalid reason'
-    Need ($winEntry.Contains('handoff_timeout')) 'win.ps1 uses handoff_timeout reason'
-    Need ($winEntry.Contains('function Test-PathInsideRoot')) 'win.ps1 has path containment helper'
-    Need ($winEntry.Contains('Test-PathInsideRoot -Path $rootedPath -Root $Root')) 'win.ps1 validates payload relative paths by containment'
-    Need ($winEntry -match 'failureSuggestion') 'win.ps1 writes failure suggestion to state'
-    Need ($winEntry -match 'failureLogPath') 'win.ps1 writes failure log path to state'
-    Need ($winEntry -match 'function Test-HandoffAcceptedState') 'win.ps1 validates handoff accepted state'
-    Need ($winEntry -match 'acceptedWorkspaceRoot' -and $winEntry -match 'acceptedStatePath' -and $winEntry -match 'acceptedLogPath' -and $winEntry -match 'acceptedPayloadRoot' -and $winEntry -match 'acceptedMainEntryPath' -and $winEntry -match 'acceptedSource' -and $winEntry -match 'acceptedHandoffMode') 'win.ps1 checks handoff accepted identity fields'
-    Need ($winEntry -match "Add-StartupCheck -Name 'windows_build'") 'win.ps1 checks Windows build'
-    Need ($winEntry -match "Add-StartupCheck -Name 'powershell_version'") 'win.ps1 checks PowerShell version'
-    Need ($winEntry -match '\$missingCapabilities') 'win.ps1 checks runtime capabilities'
-    Need ($winEntry -match '\$cmdArguments\s*=\s*''/c') 'win.ps1 launches administrator cmd with /c'
+if (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) {
+    Need (Test-Utf8Bom -Path $bootstrapPath) 'bootstrap.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    Test-PowerShellFileSyntax -Path $bootstrapPath
+
+    $winEntry = Get-Content -LiteralPath $bootstrapPath -Raw
+    Need ($winEntry -match '\$script:MinimumPowerShellVersion\s*=\s*\[version\]''5\.1''') 'bootstrap.ps1 requires PowerShell 5.1+'
+    Need ($winEntry -match '\$script:MinimumWindowsBuild\s*=\s*17763') 'bootstrap.ps1 requires Windows build 17763+'
+    Need ($winEntry -match 'function Get-StartupFailureSuggestion') 'bootstrap.ps1 has failure suggestion mapper'
+    Need ($winEntry -match "'handoff_failed'") 'bootstrap.ps1 maps handoff failure suggestion'
+    Need ($winEntry -match 'function Write-StartupFailureMessage') 'bootstrap.ps1 has unified failure message writer'
+    Need ($winEntry.Contains('manifest_read_failed')) 'bootstrap.ps1 uses manifest_read_failed reason'
+    Need ($winEntry.Contains('manifest_schema_invalid')) 'bootstrap.ps1 uses manifest_schema_invalid reason'
+    Need ($winEntry.Contains('payload_path_invalid')) 'bootstrap.ps1 uses payload_path_invalid reason'
+    Need ($winEntry.Contains('payload_download_failed')) 'bootstrap.ps1 uses payload_download_failed reason'
+    Need ($winEntry.Contains('entry_shape_invalid')) 'bootstrap.ps1 uses entry_shape_invalid reason'
+    Need ($winEntry.Contains('handoff_timeout')) 'bootstrap.ps1 uses handoff_timeout reason'
+    Need ($winEntry.Contains('function Test-PathInsideRoot')) 'bootstrap.ps1 has path containment helper'
+    Need ($winEntry.Contains('Test-PathInsideRoot -Path $rootedPath -Root $Root')) 'bootstrap.ps1 validates payload relative paths by containment'
+    Need ($winEntry -match 'failureSuggestion') 'bootstrap.ps1 writes failure suggestion to state'
+    Need ($winEntry -match 'failureLogPath') 'bootstrap.ps1 writes failure log path to state'
+    Need ($winEntry -match 'function Test-HandoffAcceptedState') 'bootstrap.ps1 validates handoff accepted state'
+    Need ($winEntry -match 'acceptedWorkspaceRoot' -and $winEntry -match 'acceptedStatePath' -and $winEntry -match 'acceptedLogPath' -and $winEntry -match 'acceptedPayloadRoot' -and $winEntry -match 'acceptedMainEntryPath' -and $winEntry -match 'acceptedSource' -and $winEntry -match 'acceptedHandoffMode') 'bootstrap.ps1 checks handoff accepted identity fields'
+    Need ($winEntry -match "Add-StartupCheck -Name 'windows_build'") 'bootstrap.ps1 checks Windows build'
+    Need ($winEntry -match "Add-StartupCheck -Name 'powershell_version'") 'bootstrap.ps1 checks PowerShell version'
+    Need ($winEntry -match '\$missingCapabilities') 'bootstrap.ps1 checks runtime capabilities'
+    Need ($winEntry -match '\$cmdArguments\s*=\s*''/c') 'bootstrap.ps1 launches administrator cmd with /c'
 }
 
 if ($script:Failed) {
