@@ -81,6 +81,64 @@ function Write-StartupProgress {
     Write-Host $Message
 }
 
+function Start-StartupWaitTimer {
+    param([string] $Message)
+
+    $stopPath = Join-Path $script:TempRoot ("startup-wait-$($script:StartupId)-$([guid]::NewGuid().ToString('N')).stop")
+    $timerScript = @'
+$ErrorActionPreference = 'SilentlyContinue'
+$stopPath = [Environment]::GetEnvironmentVariable('DINGJIAI_WAIT_TIMER_STOP_PATH', 'Process')
+$message = [Environment]::GetEnvironmentVariable('DINGJIAI_WAIT_TIMER_MESSAGE', 'Process')
+$startedAt = Get-Date
+
+while (-not [System.IO.File]::Exists($stopPath)) {
+    Start-Sleep -Seconds 1
+    if ([System.IO.File]::Exists($stopPath)) {
+        break
+    }
+
+    $elapsedSeconds = [int] [Math]::Floor(((Get-Date) - $startedAt).TotalSeconds)
+    Write-Host ("`r{0}（已等待 {1} 秒）" -f $message, $elapsedSeconds) -NoNewline
+}
+
+$finalElapsedSeconds = [int] [Math]::Floor(((Get-Date) - $startedAt).TotalSeconds)
+if ($finalElapsedSeconds -gt 0) {
+    Write-Host ("`r{0}（已等待 {1} 秒）" -f $message, $finalElapsedSeconds)
+}
+'@
+    $encodedTimerScript = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($timerScript))
+
+    [Environment]::SetEnvironmentVariable('DINGJIAI_WAIT_TIMER_STOP_PATH', $stopPath, 'Process')
+    [Environment]::SetEnvironmentVariable('DINGJIAI_WAIT_TIMER_MESSAGE', $Message, 'Process')
+    try {
+        $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encodedTimerScript) -NoNewWindow -PassThru
+        return [pscustomobject] @{ StopPath = $stopPath; Process = $process }
+    } catch {
+        Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
+        return $null
+    } finally {
+        [Environment]::SetEnvironmentVariable('DINGJIAI_WAIT_TIMER_STOP_PATH', $null, 'Process')
+        [Environment]::SetEnvironmentVariable('DINGJIAI_WAIT_TIMER_MESSAGE', $null, 'Process')
+    }
+}
+
+function Stop-StartupWaitTimer {
+    param($Timer)
+
+    if ($null -eq $Timer) {
+        return
+    }
+
+    try {
+        New-Item -ItemType File -Force -Path $Timer.StopPath | Out-Null
+        if ($Timer.Process -and -not $Timer.Process.WaitForExit(2000)) {
+            $Timer.Process.Kill()
+        }
+    } finally {
+        Remove-Item -LiteralPath $Timer.StopPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Set-StartupSecurityProtocol {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -1089,8 +1147,14 @@ Assert-StartupBudget -Checkpoint 'before_manifest'
 Write-StartupProgress '获取启动清单...'
 $manifest = Read-Manifest
 Assert-StartupBudget -Checkpoint 'before_payload_sync'
-Write-StartupProgress '同步启动文件...请稍等'
-$mainEntryPath = Sync-Payload -Manifest $manifest
+$payloadSyncMessage = '同步启动文件...请稍等'
+Write-StartupProgress $payloadSyncMessage
+$payloadWaitTimer = Start-StartupWaitTimer -Message $payloadSyncMessage
+try {
+    $mainEntryPath = Sync-Payload -Manifest $manifest
+} finally {
+    Stop-StartupWaitTimer -Timer $payloadWaitTimer
+}
 Assert-StartupBudget -Checkpoint 'before_entry_landing_shape'
 Test-EntryLandingShape -MainEntryPath $mainEntryPath
 Assert-StartupBudget -Checkpoint 'before_handoff'

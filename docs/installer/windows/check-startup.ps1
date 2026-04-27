@@ -290,6 +290,7 @@ if (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) {
     Need ($winEntry.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'bootstrap.ps1 sets startup downloads to TLS 1.2 rather than preserving older protocols'
     Need ($winEntry.Contains('正在启动中，请勿关闭当前窗口')) 'bootstrap.ps1 tells users startup is in progress and not to close the window'
     Need ($winEntry.Contains('同步启动文件...请稍等')) 'bootstrap.ps1 keeps payload sync progress user-friendly without file counts'
+    Need ($winEntry.Contains('已等待') -and $winEntry.Contains('Start-StartupWaitTimer') -and $winEntry.Contains('Stop-StartupWaitTimer')) 'bootstrap.ps1 shows a live wait timer during payload sync'
     Need (-not ($winEntry -match '同步启动文件 \{0\}/\{1\}')) 'bootstrap.ps1 does not expose payload file counts during startup'
     Need ($winEntry.Contains('正在打开管理员 CMD')) 'bootstrap.ps1 tells users when administrator CMD handoff is starting'
     Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'bootstrap.ps1 detects CMD AutoRun before administrator handoff'
