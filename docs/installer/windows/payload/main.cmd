@@ -78,8 +78,11 @@ if not exist "%STATE_PATH%" goto bad_args
 if not exist "%PAYLOAD_ROOT%\" goto bad_args
 if /I not "%SELF_PATH%"=="%MAIN_ENTRY_PATH%" goto bad_args
 
-net session >nul 2>nul
+fltmc >nul 2>nul
 if errorlevel 1 goto not_admin
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PAYLOAD_ROOT%\lib\windows\console_guard.ps1"
+if errorlevel 1 goto console_failed
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PAYLOAD_ROOT%\lib\windows\startup_accept.ps1" -StartupId "%STARTUP_ID%" -WorkspaceRoot "%WORKSPACE_ROOT%" -StatePath "%STATE_PATH%" -LogPath "%LOG_PATH%" -PayloadRoot "%PAYLOAD_ROOT%" -MainEntryPath "%MAIN_ENTRY_PATH%" -Source "%SOURCE%" -SelfPath "%SELF_PATH%"
 if errorlevel 1 goto state_failed
@@ -147,6 +150,11 @@ exit /b 2
 echo Please run this entry from an administrator CMD window.
 pause
 exit /b 4
+
+:console_failed
+echo Console setup failed.
+pause
+exit /b 6
 
 :state_failed
 echo Startup state update failed.

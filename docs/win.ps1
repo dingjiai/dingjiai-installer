@@ -75,6 +75,16 @@ function Add-StartupCheck {
     $script:StartupChecks += $check
 }
 
+function Set-StartupSecurityProtocol {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Add-StartupCheck -Name 'tls12_enabled' -Status 'passed' -Detail @{ securityProtocol = [Net.ServicePointManager]::SecurityProtocol.ToString() }
+    } catch {
+        Add-StartupCheck -Name 'tls12_enabled' -Status 'failed' -Detail @{ error = $_.Exception.Message }
+        Stop-Startup -Reason 'powershell_runtime_unhealthy' -Message 'PowerShell 无法启用 TLS 1.2。'
+    }
+}
+
 function Assert-StartupBudget {
     param([string] $Checkpoint)
 
@@ -137,6 +147,7 @@ function Get-StartupFailureSuggestion {
         'powershell_language_mode_unsupported' { return '请换用正常的 PowerShell/CMD 窗口；如果这是公司电脑或受管设备，请检查脚本语言模式策略限制。' }
         'powershell_runtime_unhealthy' { return '请换用 Windows 自带 PowerShell 5.1 或 PowerShell 7 后重试。' }
         'powershell_runtime_capability_missing' { return '请换用完整的 Windows PowerShell 环境后重试。' }
+        'cmd_autorun_configured' { return '请先移除或临时停用 CMD AutoRun 后重试；本启动器不会自动修改注册表。' }
         'workspace_preparation_timeout' { return '请稍后重试；如果仍失败，请检查本机磁盘、杀毒软件或 AppData 写入权限。' }
         'workspace_create_failed' { return '请确认当前用户可以写入 AppData，本地安全软件没有拦截文件创建。' }
         'manifest_read_failed' { return '请检查网络、代理或本地调试文件是否完整，然后重试。' }
@@ -355,6 +366,35 @@ function Write-StartupState {
         checkCount = $script:StartupChecks.Count
     }
     $logEntry | ConvertTo-Json -Depth 4 -Compress | Add-Content -LiteralPath $script:LogPath -Encoding UTF8
+}
+
+function Test-CmdAutoRun {
+    $roots = @(
+        'Registry::HKEY_CURRENT_USER\Software\Microsoft\Command Processor',
+        'Registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Command Processor'
+    )
+
+    $configured = @()
+    foreach ($root in $roots) {
+        try {
+            $value = (Get-ItemProperty -LiteralPath $root -Name 'AutoRun' -ErrorAction Stop).AutoRun
+            if (-not [string]::IsNullOrWhiteSpace([string] $value)) {
+                $configured += [ordered] @{ path = $root; value = [string] $value }
+            }
+        } catch [System.Management.Automation.ItemNotFoundException] {
+        } catch [System.Management.Automation.PSArgumentException] {
+        } catch {
+            Add-StartupCheck -Name 'cmd_autorun' -Status 'failed' -Detail @{ path = $root; error = $_.Exception.Message }
+            Stop-Startup -Reason 'cmd_autorun_configured' -Message '无法确认 CMD AutoRun 配置。'
+        }
+    }
+
+    if ($configured.Count -gt 0) {
+        Add-StartupCheck -Name 'cmd_autorun' -Status 'failed' -Detail @{ configured = $configured }
+        Stop-Startup -Reason 'cmd_autorun_configured' -Message '检测到 CMD AutoRun，管理员 CMD 菜单可能被外部命令污染。'
+    }
+
+    Add-StartupCheck -Name 'cmd_autorun' -Status 'passed' -Detail @{ checkedRoots = $roots }
 }
 
 function Test-HostNormalization {
@@ -1018,6 +1058,7 @@ function Start-AdminCmdHandoff {
     Stop-Startup -Reason 'handoff_timeout' -Message "管理员 CMD 主窗口未在 $script:HandoffAcceptedWaitSeconds 秒内确认接管。"
 }
 
+Set-StartupSecurityProtocol
 Assert-StartupBudget -Checkpoint 'before_host_normalization'
 Test-HostNormalization
 Assert-StartupBudget -Checkpoint 'before_terminal_compatibility'
@@ -1029,6 +1070,8 @@ Write-StartupState -Stage $script:StartupStages.PlatformGate
 Test-WindowsHost
 Assert-StartupBudget -Checkpoint 'before_powershell_runtime'
 Test-PowerShellRuntimeHealth
+Assert-StartupBudget -Checkpoint 'before_cmd_autorun'
+Test-CmdAutoRun
 Assert-StartupBudget -Checkpoint 'before_workspace'
 Initialize-Workspace
 Assert-StartupBudget -Checkpoint 'before_manifest'

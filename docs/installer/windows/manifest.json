@@ -117,6 +117,11 @@
       "required": true
     },
     {
+      "path": "lib/windows/console_guard.ps1",
+      "sha256": "07743703548dcdd3b03018bcd71a015e3d05c02559d0e8d1d23bef7e8f79b630",
+      "required": true
+    },
+    {
       "path": "lib/windows/detect.cmd",
       "sha256": "c5e9f056a77191a074fee184d6a014f626e255515d6b0c755d5334b5a447c52a",
       "required": true
@@ -163,7 +168,7 @@
     },
     {
       "path": "main.cmd",
-      "sha256": "16487514ffecf0324a4f20a0cdc6e84028a91cf6aedbe78c4cdf7e78c99d7b13",
+      "sha256": "099e97e81bfca03a57c1ce590d31a57d3e97e25f4f4578b5bcae457cd376108f",
       "required": true
     },
     {

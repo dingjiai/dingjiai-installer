@@ -234,6 +234,13 @@ Need (Test-Path -LiteralPath $manifestPath -PathType Leaf) "manifest exists: $ma
 Need (Test-Path -LiteralPath $payloadRoot -PathType Container) "payload directory exists: $payloadRoot"
 Need (Test-Path -LiteralPath $winEntryPath -PathType Leaf) "Windows bootstrap exists: $winEntryPath"
 
+if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
+    $winEntry = Get-Content -LiteralPath $winEntryPath -Raw
+    Need ($winEntry.Contains('[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12')) 'win.ps1 sets startup downloads to TLS 1.2 rather than preserving older protocols'
+    Need ($winEntry.Contains('function Test-CmdAutoRun') -and $winEntry.Contains('Command Processor') -and $winEntry.Contains('AutoRun')) 'win.ps1 detects CMD AutoRun before administrator handoff'
+    Need (-not ($winEntry -match 'reg(\.exe)?\s+(add|delete).*AutoRun')) 'win.ps1 does not modify CMD AutoRun registry values'
+}
+
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     exit 1
 }
@@ -307,6 +314,7 @@ $requiredPayloadPaths = @(
     'flows/windows/uninstall/checkpoints/90_finalize.cmd',
     'lib/windows/checkpoint_runner.cmd',
     'lib/windows/startup_accept.ps1',
+    'lib/windows/console_guard.ps1',
     'lib/windows/ui_bridge.cmd',
     'lib/windows/log.cmd',
     'lib/windows/state.cmd',
@@ -355,6 +363,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need ($mainCmd -match '(?m)^if errorlevel 4 exit\s*$') 'main.cmd exits administrator window from menu 0'
     Need ($mainCmd -match '(?m)^chcp 65001 >nul\s*$') 'main.cmd switches UI rendering to UTF-8 code page'
     Need ($mainCmd.Contains('lib\windows\startup_accept.ps1')) 'main.cmd delegates handoff acceptance to startup_accept.ps1'
+    Need ($mainCmd.Contains('fltmc >nul 2>nul')) 'main.cmd uses fltmc as administrator probe'
     Need ($mainCmd.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PAYLOAD_ROOT%\lib\windows\startup_accept.ps1"')) 'main.cmd invokes startup acceptance helper as a file'
     Need (-not $mainCmd.Contains('function Full([string]$Path)')) 'main.cmd no longer embeds startup acceptance PowerShell logic'
 
@@ -364,6 +373,18 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     if (Test-Path -LiteralPath $startupAcceptPath -PathType Leaf) {
         Test-PowerShellFileSyntax -Path $startupAcceptPath
         Test-StartupAcceptBehavior -HelperPath $startupAcceptPath
+    }
+
+    $consoleGuardPath = Join-Path $payloadRoot 'lib/windows/console_guard.ps1'
+    Need (Test-Path -LiteralPath $consoleGuardPath -PathType Leaf) 'console_guard.ps1 helper exists'
+    Need (Test-Utf8Bom -Path $consoleGuardPath) 'console_guard.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $consoleGuardPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $consoleGuardPath
+        $consoleGuard = Get-Content -LiteralPath $consoleGuardPath -Raw
+        Need ($consoleGuard.Contains('QuickEdit') -and $consoleGuard.Contains('GetConsoleMode') -and $consoleGuard.Contains('SetConsoleMode')) 'console_guard.ps1 disables QuickEdit on the current console'
+        Need ($consoleGuard.Contains("throw 'failed to disable QuickEdit mode'")) 'console_guard.ps1 fails closed when QuickEdit cannot be disabled'
+        Need (-not ($consoleGuard -match 'reg(\.exe)?\s+(add|delete).*QuickEdit')) 'console_guard.ps1 does not modify QuickEdit registry values'
+        Need (-not ($consoleGuard.Contains('Start-Process') -or $consoleGuard.Contains('conhost.exe') -or $consoleGuard.Contains('cmd.exe'))) 'console_guard.ps1 does not restart console host'
     }
 
     $uiPath = Join-Path $payloadRoot 'ui.ps1'
