@@ -112,6 +112,11 @@
       "required": true
     },
     {
+      "path": "lib/windows/startup_accept.ps1",
+      "sha256": "5cf9a449f1eece12db5422a6fe57d86dad195cfbe761b7e6b43d16e4bceb7204",
+      "required": true
+    },
+    {
       "path": "lib/windows/detect.cmd",
       "sha256": "c5e9f056a77191a074fee184d6a014f626e255515d6b0c755d5334b5a447c52a",
       "required": true
@@ -158,7 +163,7 @@
     },
     {
       "path": "main.cmd",
-      "sha256": "ea5c9f0bba82059aa25f005ef454fa3e70593e8c242afe7331f7cd0b0e6c4429",
+      "sha256": "16487514ffecf0324a4f20a0cdc6e84028a91cf6aedbe78c4cdf7e78c99d7b13",
       "required": true
     },
     {

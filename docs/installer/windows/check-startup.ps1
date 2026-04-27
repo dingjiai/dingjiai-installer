@@ -142,6 +142,90 @@ function Invoke-CheckpointJson {
     }
 }
 
+function Test-StartupAcceptBehavior {
+    param([string] $HelperPath)
+
+    if (-not (Test-Path -LiteralPath $HelperPath -PathType Leaf)) {
+        return
+    }
+
+    $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("dingjiai-startup-accept-{0}" -f [guid]::NewGuid().ToString('N'))
+    try {
+        $workspaceRoot = Join-Path $testRoot 'workspace'
+        $stateRoot = Join-Path $workspaceRoot 'state'
+        $logRoot = Join-Path $workspaceRoot 'logs'
+        $payloadRoot = Join-Path $workspaceRoot 'payload'
+        New-Item -ItemType Directory -Path $stateRoot, $logRoot, $payloadRoot -Force | Out-Null
+
+        $startupId = 'self-check-startup'
+        $mainEntryPath = Join-Path $payloadRoot 'main.cmd'
+        Set-Content -LiteralPath $mainEntryPath -Value '@echo off' -Encoding ASCII
+
+        $statePath = Join-Path $stateRoot 'startup-self-check.json'
+        $logPath = Join-Path $logRoot 'startup-self-check.jsonl'
+        $source = 'local-win-ps1'
+        $initialState = [ordered] @{
+            startupId = $startupId
+            stage = 'handoff'
+            workspaceRoot = $workspaceRoot
+            payloadRoot = $payloadRoot
+            mainEntryPath = $mainEntryPath
+            source = $source
+        }
+        Set-Content -LiteralPath $statePath -Value ($initialState | ConvertTo-Json -Depth 4) -Encoding UTF8
+
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $HelperPath `
+            -StartupId $startupId `
+            -WorkspaceRoot $workspaceRoot `
+            -StatePath $statePath `
+            -LogPath $logPath `
+            -PayloadRoot $payloadRoot `
+            -MainEntryPath $mainEntryPath `
+            -Source $source `
+            -SelfPath $mainEntryPath
+        $successExitCode = $LASTEXITCODE
+        Need ($successExitCode -eq 0) 'startup_accept.ps1 accepts valid handoff state'
+
+        $acceptedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+        Need ($acceptedState.stage -eq 'completed') 'startup_accept.ps1 marks startup completed'
+        Need ($acceptedState.handoffAccepted -eq $true) 'startup_accept.ps1 marks handoff accepted'
+        Need ($acceptedState.acceptedHandoffMode -eq 'admin-cmd') 'startup_accept.ps1 records admin-cmd handoff mode'
+        Need ((Get-NormalizedFullPath -Path $acceptedState.acceptedWorkspaceRoot) -eq (Get-NormalizedFullPath -Path $workspaceRoot)) 'startup_accept.ps1 records accepted workspace root'
+        Need ((Get-NormalizedFullPath -Path $acceptedState.acceptedMainEntryPath) -eq (Get-NormalizedFullPath -Path $mainEntryPath)) 'startup_accept.ps1 records accepted main entry path'
+
+        $failureStdoutPath = Join-Path $testRoot 'expected-failure.stdout.txt'
+        $failureStderrPath = Join-Path $testRoot 'expected-failure.stderr.txt'
+        $failureProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            $HelperPath,
+            '-StartupId',
+            $startupId,
+            '-WorkspaceRoot',
+            $workspaceRoot,
+            '-StatePath',
+            $statePath,
+            '-LogPath',
+            $logPath,
+            '-PayloadRoot',
+            $payloadRoot,
+            '-MainEntryPath',
+            $mainEntryPath,
+            '-Source',
+            $source,
+            '-SelfPath',
+            (Join-Path $payloadRoot 'wrong.cmd')
+        ) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $failureStdoutPath -RedirectStandardError $failureStderrPath
+        Need ($failureProcess.ExitCode -ne 0) 'startup_accept.ps1 rejects wrong main entry self path'
+    } finally {
+        if (Test-Path -LiteralPath $testRoot) {
+            Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 $manifestPath = Join-Path $PSScriptRoot 'manifest.json'
 $payloadRoot = Join-Path $PSScriptRoot 'payload'
 $winEntryPath = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'win.ps1'
@@ -222,6 +306,7 @@ $requiredPayloadPaths = @(
     'flows/windows/uninstall/checkpoints/40_enhancements.cmd',
     'flows/windows/uninstall/checkpoints/90_finalize.cmd',
     'lib/windows/checkpoint_runner.cmd',
+    'lib/windows/startup_accept.ps1',
     'lib/windows/ui_bridge.cmd',
     'lib/windows/log.cmd',
     'lib/windows/state.cmd',
@@ -269,6 +354,17 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need ($mainCmd.Contains('flows\windows\uninstall\entry.cmd')) 'main.cmd routes menu 3 to uninstall flow entry'
     Need ($mainCmd -match '(?m)^if errorlevel 4 exit\s*$') 'main.cmd exits administrator window from menu 0'
     Need ($mainCmd -match '(?m)^chcp 65001 >nul\s*$') 'main.cmd switches UI rendering to UTF-8 code page'
+    Need ($mainCmd.Contains('lib\windows\startup_accept.ps1')) 'main.cmd delegates handoff acceptance to startup_accept.ps1'
+    Need ($mainCmd.Contains('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PAYLOAD_ROOT%\lib\windows\startup_accept.ps1"')) 'main.cmd invokes startup acceptance helper as a file'
+    Need (-not $mainCmd.Contains('function Full([string]$Path)')) 'main.cmd no longer embeds startup acceptance PowerShell logic'
+
+    $startupAcceptPath = Join-Path $payloadRoot 'lib/windows/startup_accept.ps1'
+    Need (Test-Path -LiteralPath $startupAcceptPath -PathType Leaf) 'startup_accept.ps1 helper exists'
+    Need (Test-Utf8Bom -Path $startupAcceptPath) 'startup_accept.ps1 uses UTF-8 BOM for Windows PowerShell 5.1'
+    if (Test-Path -LiteralPath $startupAcceptPath -PathType Leaf) {
+        Test-PowerShellFileSyntax -Path $startupAcceptPath
+        Test-StartupAcceptBehavior -HelperPath $startupAcceptPath
+    }
 
     $uiPath = Join-Path $payloadRoot 'ui.ps1'
     Need (Test-Path -LiteralPath $uiPath -PathType Leaf) 'ui.ps1 exists'
@@ -661,18 +757,7 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         Need ($gitPathUntrustedJson.decision.exitCode -eq 60) 'Git checkpoint reports untrusted identity as dependency blocker exit code'
     }
 
-    $embeddedLine = $mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1
-    Need (-not [string]::IsNullOrWhiteSpace($embeddedLine)) 'main.cmd has embedded PowerShell state writer'
-
-    if (-not [string]::IsNullOrWhiteSpace($embeddedLine)) {
-        $embeddedScript = $embeddedLine -replace '^.* -Command "', '' -replace '"\s*$', ''
-        try {
-            [scriptblock]::Create($embeddedScript) | Out-Null
-            Pass 'embedded PowerShell syntax ok: main.cmd'
-        } catch {
-            Fail "embedded PowerShell syntax error: $($_.Exception.Message)"
-        }
-    }
+    Need (-not ($mainCmd -split "`r?`n" | Where-Object { $_ -like 'powershell.exe * -Command "*' } | Select-Object -First 1)) 'main.cmd does not embed startup acceptance PowerShell'
 }
 
 if (Test-Path -LiteralPath $winEntryPath -PathType Leaf) {
