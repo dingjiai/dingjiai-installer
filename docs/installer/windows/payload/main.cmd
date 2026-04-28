@@ -96,6 +96,7 @@ cls
 :main_menu
 cls
 call :render_ui main
+if errorlevel 1 exit /b %errorlevel%
 choice /C:1230 /N /M "              Press a key [1,2,3,0]: "
 if errorlevel 4 exit
 if errorlevel 3 goto flow_uninstall
@@ -106,6 +107,7 @@ goto main_menu
 :flow_install
 cls
 call :render_ui install
+if errorlevel 1 exit /b %errorlevel%
 call :ensure_deferred_payload
 if errorlevel 1 goto main_menu
 call "%PAYLOAD_ROOT%\flows\windows\install\entry.cmd"
@@ -117,6 +119,7 @@ goto main_menu
 :flow_update
 cls
 call :render_ui update
+if errorlevel 1 exit /b %errorlevel%
 call :ensure_deferred_payload
 if errorlevel 1 goto main_menu
 call "%PAYLOAD_ROOT%\flows\windows\update\entry.cmd"
@@ -128,6 +131,7 @@ goto main_menu
 :flow_uninstall
 cls
 call :render_ui uninstall
+if errorlevel 1 exit /b %errorlevel%
 call :ensure_deferred_payload
 if errorlevel 1 goto main_menu
 call "%PAYLOAD_ROOT%\flows\windows\uninstall\entry.cmd"

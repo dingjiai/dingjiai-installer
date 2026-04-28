@@ -128,7 +128,7 @@
     },
     {
       "path": "lib/windows/detect.cmd",
-      "sha256": "c5e9f056a77191a074fee184d6a014f626e255515d6b0c755d5334b5a447c52a",
+      "sha256": "6afc43f55c48f3b3e622fa842fdf981b374d09045360bb531421f9160ea1f877",
       "required": false
     },
     {
@@ -138,7 +138,7 @@
     },
     {
       "path": "lib/windows/exec.cmd",
-      "sha256": "3b366d283b6c5c85da24e48a90b6ab9be6da666af3f66fc75ed9d233f7b012a9",
+      "sha256": "c0e4f8a629d1f7c2c3a8fd913e69de1ce1e53ae1f2ad1929f9e3bc3e3eaced00",
       "required": false
     },
     {
@@ -148,22 +148,22 @@
     },
     {
       "path": "lib/windows/log.cmd",
-      "sha256": "861d0d29f9b500661fdadcaf1b717c5c4df9b8730e0926b9fe04bbac4b7f59ea",
+      "sha256": "622f99926c0ae93a634e8030d1c0ae0d6a29cc88ef66a8534453fa6d7e7d31a1",
       "required": false
     },
     {
       "path": "lib/windows/paths.cmd",
-      "sha256": "590869604c4c7fb7ed00bd852a030f297551a86a8abccf648fb0137c1ee09d34",
+      "sha256": "3dfc3c1a40aaba83eae21386ef8ea543bc5a6cf3325f2348707329329cc9bd18",
       "required": false
     },
     {
       "path": "lib/windows/state.cmd",
-      "sha256": "f2c9eca76efc8d9a2038291c48d8bfe6e76ebce63d3f595726cb3c3a825a2674",
+      "sha256": "3edd30f1000fe6566f4a6d48e803f6f8afddd37ba24adcb53b6e6d3444f16ba3",
       "required": false
     },
     {
       "path": "lib/windows/ui_bridge.cmd",
-      "sha256": "c3ad4c8feaedae0eb214428f94f2376ab3dc2274e0532d644c2556b13faf5e87",
+      "sha256": "afa9cffea69f25d42c3b50b1d6f3490119ce71edba5cd8165e80b05443e8a34f",
       "required": false
     },
     {
@@ -173,7 +173,7 @@
     },
     {
       "path": "main.cmd",
-      "sha256": "d5f1a7549463fd464be78253573799b9f6fa1a3f54d038fa14e987665bb4c430",
+      "sha256": "87d71f65a1f5798b35bee8c7adf269283fbae4be51002dfe77e0fda2369183f4",
       "required": true
     },
     {

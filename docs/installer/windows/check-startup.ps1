@@ -440,6 +440,11 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
     Need ($mainCmd -match '--source') 'main.cmd accepts source'
     Need ($mainCmd -match '--handoff-mode') 'main.cmd accepts handoff mode'
     Need ($mainCmd -match 'ui\.ps1') 'main.cmd delegates UI rendering to ui.ps1'
+    $mainCmdLines = $mainCmd -split "`r?`n"
+    foreach ($pageName in @('main', 'install', 'update', 'uninstall')) {
+        $renderCallIndex = [array]::IndexOf($mainCmdLines, "call :render_ui $pageName")
+        Need ($renderCallIndex -ge 0 -and $mainCmdLines[$renderCallIndex + 1] -eq 'if errorlevel 1 exit /b %errorlevel%') "main.cmd stops after failed UI render for $pageName page"
+    }
     Need ($mainCmd.Contains('flows\windows\install\entry.cmd')) 'main.cmd routes menu 1 to install flow entry'
     Need ($mainCmd.Contains('flows\windows\update\entry.cmd')) 'main.cmd routes menu 2 to update flow entry'
     Need ($mainCmd.Contains('flows\windows\uninstall\entry.cmd')) 'main.cmd routes menu 3 to uninstall flow entry'
@@ -745,6 +750,24 @@ if (Test-Path -LiteralPath $mainCmdPath -PathType Leaf) {
         'flows/windows/uninstall/checkpoints/40_enhancements.cmd',
         'flows/windows/uninstall/checkpoints/90_finalize.cmd'
     )
+    $sharedPlaceholderPaths = @(
+        'lib/windows/detect.cmd',
+        'lib/windows/exec.cmd',
+        'lib/windows/log.cmd',
+        'lib/windows/paths.cmd',
+        'lib/windows/state.cmd',
+        'lib/windows/ui_bridge.cmd'
+    )
+    foreach ($sharedPlaceholderPath in $sharedPlaceholderPaths) {
+        $fullSharedPlaceholderPath = Join-Path $payloadRoot $sharedPlaceholderPath
+        Need (Test-Path -LiteralPath $fullSharedPlaceholderPath -PathType Leaf) "shared placeholder helper exists: $sharedPlaceholderPath"
+        if (Test-Path -LiteralPath $fullSharedPlaceholderPath -PathType Leaf) {
+            $sharedPlaceholderText = Get-Content -LiteralPath $fullSharedPlaceholderPath -Raw
+            Need ($sharedPlaceholderText.Contains('NOT_IMPLEMENTED')) "shared placeholder helper says NOT_IMPLEMENTED: $sharedPlaceholderPath"
+            Need ($sharedPlaceholderText.Contains('exit /b 11')) "shared placeholder helper exits 11: $sharedPlaceholderPath"
+        }
+    }
+
     foreach ($placeholderPath in $placeholderPaths) {
         $fullPlaceholderPath = Join-Path $payloadRoot $placeholderPath
         Need (Test-Path -LiteralPath $fullPlaceholderPath -PathType Leaf) "placeholder checkpoint exists: $placeholderPath"
