@@ -8,7 +8,7 @@
   "files": [
     {
       "path": "startup/main.cmd",
-      "sha256": "0e41cbdfee26a10a98279a5a13e539df60fac2cf47bfe1fedc8b38428adc5906",
+      "sha256": "19fcf64c1623b2b509f4b5c86ea76b01a698cc2608e8c769a81ec56b8eb35872",
       "required": true
     },
     {
@@ -33,12 +33,12 @@
     },
     {
       "path": "flows/windows.cmd",
-      "sha256": "aacf413c79e7e2229956afb7f8269aa10ba360e1b9dd0bdb26cd61558e4d8258",
+      "sha256": "27882c3fadecad9bbb8dd327510edb02f68d759e1aa6a16f56ba8c97b3dfb5ce",
       "required": true
     },
     {
       "path": "actions/winget.cmd",
-      "sha256": "2709d5e9fce3f15a9c82cf1cad9b2cd04100c61cb85660b9186d0901dfe4d436",
+      "sha256": "d946f1743f63c575ab77e0a408443b2d16fa87497d2f4dfce712691de4178448",
       "required": false
     },
     {

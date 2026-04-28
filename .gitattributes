@@ -1,8 +1,8 @@
 # Keep published installer asset bytes stable across GitHub Pages.
-docs/startup/**/*.cmd text eol=lf
+docs/startup/**/*.cmd -text
 docs/startup/**/*.ps1 text eol=lf
 docs/startup/**/*.json text eol=lf
-docs/flows/**/*.cmd text eol=lf
-docs/actions/**/*.cmd text eol=lf
+docs/flows/**/*.cmd -text
+docs/actions/**/*.cmd -text
 docs/actions/**/*.ps1 text eol=lf
 docs/win.ps1 text eol=lf

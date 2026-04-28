@@ -372,6 +372,10 @@ foreach ($file in $manifest.files) {
         $actualHash = Get-Sha256Hex -Path $localPath
         $expectedHash = ([string] $file.sha256).ToLowerInvariant()
         Need ($actualHash -eq $expectedHash) "payload sha256 matches manifest: $payloadPath"
+        if ($payloadPath.EndsWith('.cmd', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $payloadBytes = [System.IO.File]::ReadAllBytes($localPath)
+            Need (($payloadBytes -join ',').Contains('13,10')) "cmd payload uses CRLF line endings for cmd.exe: $payloadPath"
+        }
     }
 
     if ($payloadPath -eq $manifest.mainEntry -and $file.required -eq $true) {
