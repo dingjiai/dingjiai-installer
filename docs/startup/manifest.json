@@ -8,42 +8,42 @@
   "files": [
     {
       "path": "startup/main.cmd",
-      "sha256": "19fcf64c1623b2b509f4b5c86ea76b01a698cc2608e8c769a81ec56b8eb35872",
+      "sha256": "0e41cbdfee26a10a98279a5a13e539df60fac2cf47bfe1fedc8b38428adc5906",
       "required": true
     },
     {
       "path": "startup/ui.ps1",
-      "sha256": "76be59e8a2d000dba56da249d50f0744e7d744d377f6c83ecafc672fdcf7c768",
+      "sha256": "0a9f752a53be29cb026c99c13192096c629a2766e14cfa468db6296ff4fc5420",
       "required": true
     },
     {
       "path": "startup/console_guard.ps1",
-      "sha256": "07743703548dcdd3b03018bcd71a015e3d05c02559d0e8d1d23bef7e8f79b630",
+      "sha256": "47ad3c338aa05f86e351e41176a8e9dac59e684b8064fd3b040a612a4c61e34f",
       "required": true
     },
     {
       "path": "startup/startup_accept.ps1",
-      "sha256": "5cf9a449f1eece12db5422a6fe57d86dad195cfbe761b7e6b43d16e4bceb7204",
+      "sha256": "44a1e9c016484dbcddf15cadc63ea39953ac6e79af7d2b1b27246079d78e2394",
       "required": true
     },
     {
       "path": "startup/deferred_payload_sync.ps1",
-      "sha256": "221a38cab3fd9c7e528648710b7955d53879873a0ed34b6aaee61d568363019c",
+      "sha256": "b50626e5478a7783ae0c083befcc8ea79416b14cdc884ae4c51d3f965c0c365a",
       "required": true
     },
     {
       "path": "flows/windows.cmd",
-      "sha256": "27882c3fadecad9bbb8dd327510edb02f68d759e1aa6a16f56ba8c97b3dfb5ce",
+      "sha256": "aacf413c79e7e2229956afb7f8269aa10ba360e1b9dd0bdb26cd61558e4d8258",
       "required": true
     },
     {
       "path": "actions/winget.cmd",
-      "sha256": "d946f1743f63c575ab77e0a408443b2d16fa87497d2f4dfce712691de4178448",
+      "sha256": "2709d5e9fce3f15a9c82cf1cad9b2cd04100c61cb85660b9186d0901dfe4d436",
       "required": false
     },
     {
       "path": "actions/winget.ps1",
-      "sha256": "aa4b898390984c0ad8a7896d4ca42c2356e342a1cdd716971586bc09d59f920e",
+      "sha256": "2c95f2b42eb879b807322cb624b0623cd9cc314362720a747c84f486e36be9c7",
       "required": false
     }
   ]

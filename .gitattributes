@@ -1,7 +1,8 @@
-# Keep published installer asset bytes stable across Git autocrlf settings.
-docs/installer/windows/payload/**/*.cmd text eol=crlf
-docs/installer/windows/payload/**/*.ps1 text eol=crlf
-docs/installer/windows/payload/**/*.json text eol=lf
-docs/installer/windows/manifest.json text eol=lf
-docs/installer/windows/check-startup.ps1 text eol=crlf
-docs/win.ps1 text eol=crlf
+# Keep published installer asset bytes stable across GitHub Pages.
+docs/startup/**/*.cmd text eol=lf
+docs/startup/**/*.ps1 text eol=lf
+docs/startup/**/*.json text eol=lf
+docs/flows/**/*.cmd text eol=lf
+docs/actions/**/*.cmd text eol=lf
+docs/actions/**/*.ps1 text eol=lf
+docs/win.ps1 text eol=lf
