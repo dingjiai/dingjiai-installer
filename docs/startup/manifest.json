@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "channel": "v1-startup",
+  "payloadVersion": "0.1.0-three-layer.1",
+  "basePath": "",
+  "mainEntry": "startup/main.cmd",
+  "handoffMode": "admin-cmd",
+  "files": [
+    {
+      "path": "startup/main.cmd",
+      "sha256": "19fcf64c1623b2b509f4b5c86ea76b01a698cc2608e8c769a81ec56b8eb35872",
+      "required": true
+    },
+    {
+      "path": "startup/ui.ps1",
+      "sha256": "76be59e8a2d000dba56da249d50f0744e7d744d377f6c83ecafc672fdcf7c768",
+      "required": true
+    },
+    {
+      "path": "startup/console_guard.ps1",
+      "sha256": "07743703548dcdd3b03018bcd71a015e3d05c02559d0e8d1d23bef7e8f79b630",
+      "required": true
+    },
+    {
+      "path": "startup/startup_accept.ps1",
+      "sha256": "5cf9a449f1eece12db5422a6fe57d86dad195cfbe761b7e6b43d16e4bceb7204",
+      "required": true
+    },
+    {
+      "path": "startup/deferred_payload_sync.ps1",
+      "sha256": "221a38cab3fd9c7e528648710b7955d53879873a0ed34b6aaee61d568363019c",
+      "required": true
+    },
+    {
+      "path": "flows/windows.cmd",
+      "sha256": "27882c3fadecad9bbb8dd327510edb02f68d759e1aa6a16f56ba8c97b3dfb5ce",
+      "required": true
+    },
+    {
+      "path": "actions/winget.cmd",
+      "sha256": "d946f1743f63c575ab77e0a408443b2d16fa87497d2f4dfce712691de4178448",
+      "required": false
+    },
+    {
+      "path": "actions/winget.ps1",
+      "sha256": "aa4b898390984c0ad8a7896d4ca42c2356e342a1cdd716971586bc09d59f920e",
+      "required": false
+    }
+  ]
+}

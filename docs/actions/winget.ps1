@@ -1,4 +1,6 @@
 ﻿param(
+    [ValidateSet('ensure')]
+    [string] $Action = 'ensure',
     [string] $FlowName = 'install',
     [string] $CheckpointName = 'winget',
     [switch] $AllowMutation,

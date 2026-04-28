@@ -7,8 +7,8 @@ $script:StartupId = if ([string]::IsNullOrWhiteSpace($existingStartupId)) { [gui
 $script:IsRemoteRun = [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)
 $script:BootstrapSource = if ($script:IsRemoteRun) { 'remote-win-ps1' } else { 'local-win-ps1' }
 $script:BootstrapRoot = if ($script:IsRemoteRun) { $null } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
-$script:LocalPayloadSourceRoot = if ($script:BootstrapRoot) { Join-Path $script:BootstrapRoot 'installer\windows' } else { $null }
-$script:BaseUrl = 'https://get.dingjiai.com/installer/windows'
+$script:LocalPayloadSourceRoot = if ($script:BootstrapRoot) { Split-Path -Parent $script:BootstrapRoot } else { $null }
+$script:BaseUrl = 'https://get.dingjiai.com'
 $script:WorkspaceRoot = Join-Path $env:LOCALAPPDATA 'dingjiai-installer'
 $script:PayloadRoot = Join-Path $script:WorkspaceRoot 'payload'
 $script:StagingRoot = Join-Path $script:WorkspaceRoot 'staging'
@@ -829,7 +829,7 @@ function Get-FileSha256 {
 
 function Read-Manifest {
     try {
-        Copy-LocalFileOrDownload -RelativePath 'manifest.json' -DestinationPath $script:ManifestPath -Kind 'manifest'
+        Copy-LocalFileOrDownload -RelativePath 'startup/manifest.json' -DestinationPath $script:ManifestPath -Kind 'manifest'
         Add-StartupCheck -Name 'manifest_acquired' -Status 'passed' -Detail @{ manifestPath = $script:ManifestPath }
     } catch {
         Add-StartupCheck -Name 'manifest_acquired' -Status 'failed' -Detail @{ manifestPath = $script:ManifestPath; error = $_.Exception.Message }
@@ -876,10 +876,10 @@ function Assert-ManifestShape {
     if ([string]::IsNullOrWhiteSpace($Manifest.payloadVersion)) {
         Stop-ManifestShape -Detail 'payload_version_missing' -Message 'manifest 缺少 payloadVersion。'
     }
-    if ($Manifest.basePath -ne 'payload') {
+    if ($Manifest.basePath -ne '') {
         Stop-ManifestShape -Detail 'base_path_unsupported' -Message 'manifest basePath 必须是 payload。'
     }
-    if ($Manifest.mainEntry -ne 'main.cmd') {
+    if ($Manifest.mainEntry -ne 'startup/main.cmd') {
         Stop-ManifestShape -Detail 'main_entry_unsupported' -Message 'manifest mainEntry 必须是 main.cmd。'
     }
     if ($Manifest.handoffMode -ne 'admin-cmd') {
@@ -953,7 +953,7 @@ function Sync-Payload {
             Stop-Startup -Reason 'payload_hash_missing' -Message "payload 文件 $($file.path) 缺少 hash。"
         }
 
-        $relativeSource = Join-Path $Manifest.basePath $file.path
+        $relativeSource = if ([string]::IsNullOrWhiteSpace([string] $Manifest.basePath)) { [string] $file.path } else { Join-Path $Manifest.basePath $file.path }
         $stagingDestination = Join-Path $stagingPayloadRoot $file.path
         try {
             Copy-LocalFileOrDownload -RelativePath $relativeSource -DestinationPath $stagingDestination -Kind 'payload'

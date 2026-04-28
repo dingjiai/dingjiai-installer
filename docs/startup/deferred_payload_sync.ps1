@@ -122,7 +122,7 @@ function Assert-ManifestShape {
     if ($Manifest.channel -ne 'v1-startup') {
         throw 'manifest channel 不受支持。'
     }
-    if ($Manifest.basePath -ne 'payload') {
+    if ($Manifest.basePath -ne '') {
         throw 'manifest basePath 必须是 payload。'
     }
     if ($null -eq $Manifest.files -or $Manifest.files.Count -lt 1) {
@@ -160,7 +160,8 @@ function Sync-DeferredPayloadFile {
     $destinationDir = Split-Path -Parent $destination
     New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 
-    $url = "$($BaseUrl.TrimEnd('/'))/$($Manifest.basePath)/$($relativePath.Replace('\', '/'))"
+    $sourcePath = if ([string]::IsNullOrWhiteSpace([string] $Manifest.basePath)) { $relativePath } else { "$($Manifest.basePath)/$relativePath" }
+    $url = "$($BaseUrl.TrimEnd('/'))/$($sourcePath.Replace('', '/'))"
     Invoke-WebRequest -Uri $url -OutFile $destination -UseBasicParsing -TimeoutSec 30
 
     $actualHash = Get-FileSha256 -Path $destination
