@@ -276,12 +276,14 @@ $payloadRoot = $docsRoot
 $winEntryPath = Join-Path $docsRoot 'win.ps1'
 $bootstrapPath = Join-Path $startupRoot 'bootstrap.ps1'
 $windowsFlowPath = Join-Path $flowsRoot 'windows.cmd'
-$wingetActionCmdPath = Join-Path $actionsRoot 'winget.cmd'
-$wingetActionPsPath = Join-Path $actionsRoot 'winget.ps1'
+$wingetActionRoot = Join-Path $actionsRoot 'winget'
+$wingetActionCmdPath = Join-Path $wingetActionRoot 'winget.cmd'
+$wingetActionPsPath = Join-Path $wingetActionRoot 'winget.ps1'
 
 Need (Test-Path -LiteralPath $startupRoot -PathType Container) "startup layer directory exists: $startupRoot"
 Need (Test-Path -LiteralPath $flowsRoot -PathType Container) "platform flow layer directory exists: $flowsRoot"
 Need (Test-Path -LiteralPath $actionsRoot -PathType Container) "action layer directory exists: $actionsRoot"
+Need (Test-Path -LiteralPath $wingetActionRoot -PathType Container) "winget component directory exists: $wingetActionRoot"
 Need (Test-Path -LiteralPath $manifestPath -PathType Leaf) "manifest exists: $manifestPath"
 Need (Test-Path -LiteralPath $payloadRoot -PathType Container) "publish root exists: $payloadRoot"
 Need (Test-Path -LiteralPath $winEntryPath -PathType Leaf) "Windows public entry exists: $winEntryPath"
@@ -396,8 +398,8 @@ $requiredPayloadPaths = @(
     'startup/startup_accept.ps1',
     'startup/deferred_payload_sync.ps1',
     'flows/windows.cmd',
-    'actions/winget.cmd',
-    'actions/winget.ps1'
+    'actions/winget/winget.cmd',
+    'actions/winget/winget.ps1'
 )
 foreach ($requiredPayloadPath in $requiredPayloadPaths) {
     Need ($seenPaths.ContainsKey($requiredPayloadPath)) "manifest includes three-layer file: $requiredPayloadPath"
@@ -428,7 +430,7 @@ if (Test-Path -LiteralPath $windowsFlowPath -PathType Leaf) {
     Need ($windowsFlow -match '(?m)^:main_menu\s*$') 'flows/windows.cmd owns the Windows menu'
     Need ($windowsFlow.Contains('MENU_1_ACTIONS=A')) 'flows/windows.cmd maps menu 1 to action list A'
     Need ($windowsFlow.Contains('ACTION_A=winget')) 'flows/windows.cmd names action A as winget'
-    Need ($windowsFlow.Contains('actions\winget.cmd')) 'flows/windows.cmd calls winget action'
+    Need ($windowsFlow.Contains('actions\winget\winget.cmd')) 'flows/windows.cmd calls winget action'
     Need ($windowsFlow.Contains('startup\ui.ps1')) 'flows/windows.cmd renders UI through startup layer UI helper'
     Need ($windowsFlow.Contains('startup\deferred_payload_sync.ps1')) 'flows/windows.cmd prepares deferred action files through startup helper'
     Need ($windowsFlow.Contains('-BaseUrl "https://get.dingjiai.com"')) 'flows/windows.cmd uses publish root for deferred payload sync'
@@ -477,27 +479,27 @@ if (Test-Path -LiteralPath $uiPath -PathType Leaf) {
     Test-PowerShellFileSyntax -Path $uiPath
 }
 
-$wingetActionCmdPath = Join-Path $payloadRoot 'actions/winget.cmd'
+$wingetActionCmdPath = Join-Path $payloadRoot 'actions/winget/winget.cmd'
 if (Test-Path -LiteralPath $wingetActionCmdPath -PathType Leaf) {
     $wingetActionCmd = Get-Content -LiteralPath $wingetActionCmdPath -Raw
-    Need ($wingetActionCmd.Contains('winget.ps1')) 'actions/winget.cmd delegates to winget.ps1'
-    Need ($wingetActionCmd.Contains('-Action "%ACTION%"')) 'actions/winget.cmd passes selected action to helper'
-    Need ($wingetActionCmd.Contains('exit /b 20')) 'actions/winget.cmd fails closed when helper is missing'
-    Need ($wingetActionCmd.Contains('exit /b %errorlevel%')) 'actions/winget.cmd propagates helper exit code'
+    Need ($wingetActionCmd.Contains('winget.ps1')) 'actions/winget/winget.cmd delegates to winget.ps1'
+    Need ($wingetActionCmd.Contains('-Action "%ACTION%"')) 'actions/winget/winget.cmd passes selected action to helper'
+    Need ($wingetActionCmd.Contains('exit /b 20')) 'actions/winget/winget.cmd fails closed when helper is missing'
+    Need ($wingetActionCmd.Contains('exit /b %errorlevel%')) 'actions/winget/winget.cmd propagates helper exit code'
 }
 
-$wingetActionPsPath = Join-Path $payloadRoot 'actions/winget.ps1'
+$wingetActionPsPath = Join-Path $payloadRoot 'actions/winget/winget.ps1'
 if (Test-Path -LiteralPath $wingetActionPsPath -PathType Leaf) {
     $wingetActionPs = Get-Content -LiteralPath $wingetActionPsPath -Raw
-    Need ($wingetActionPs.Contains('[ValidateSet(''ensure'')]')) 'actions/winget.ps1 exposes explicit ensure action'
-    Need ($wingetActionPs.Contains('$script:ComponentName = ''winget''')) 'actions/winget.ps1 reports winget component'
-    Need ($wingetActionPs.Contains('$script:ActionMode = ''report-only''')) 'actions/winget.ps1 remains report-only in current stage'
-    Need ($wingetActionPs.Contains('$script:DependencyBlockerExitCode = 60')) 'actions/winget.ps1 uses dependency blocker exit code 60'
-    Need ($wingetActionPs.Contains('$script:HelperFailureExitCode = 70')) 'actions/winget.ps1 uses helper failure exit code 70'
-    Need ($wingetActionPs.Contains('https://cdn.winget.microsoft.com/cache')) 'actions/winget.ps1 checks official winget source URL'
-    Need (-not ($wingetActionPs -match '(?m)^\s*&?\s*winget(\.exe)?\s+install')) 'actions/winget.ps1 does not install packages in report-only stage'
-    Need (-not ($wingetActionPs -match '(?m)^\s*Add-AppxPackage')) 'actions/winget.ps1 does not install App Installer packages'
-    Need (-not ($wingetActionPs -match '(?m)^\s*&?\s*winget(\.exe)?\s+source\s+(reset|add|update)')) 'actions/winget.ps1 does not mutate winget sources'
+    Need ($wingetActionPs.Contains('[ValidateSet(''ensure'')]')) 'actions/winget/winget.ps1 exposes explicit ensure action'
+    Need ($wingetActionPs.Contains('$script:ComponentName = ''winget''')) 'actions/winget/winget.ps1 reports winget component'
+    Need ($wingetActionPs.Contains('$script:ActionMode = ''report-only''')) 'actions/winget/winget.ps1 remains report-only in current stage'
+    Need ($wingetActionPs.Contains('$script:DependencyBlockerExitCode = 60')) 'actions/winget/winget.ps1 uses dependency blocker exit code 60'
+    Need ($wingetActionPs.Contains('$script:HelperFailureExitCode = 70')) 'actions/winget/winget.ps1 uses helper failure exit code 70'
+    Need ($wingetActionPs.Contains('https://cdn.winget.microsoft.com/cache')) 'actions/winget/winget.ps1 checks official winget source URL'
+    Need (-not ($wingetActionPs -match '(?m)^\s*&?\s*winget(\.exe)?\s+install')) 'actions/winget/winget.ps1 does not install packages in report-only stage'
+    Need (-not ($wingetActionPs -match '(?m)^\s*Add-AppxPackage')) 'actions/winget/winget.ps1 does not install App Installer packages'
+    Need (-not ($wingetActionPs -match '(?m)^\s*&?\s*winget(\.exe)?\s+source\s+(reset|add|update)')) 'actions/winget/winget.ps1 does not mutate winget sources'
     Test-PowerShellFileSyntax -Path $wingetActionPsPath
 }
 

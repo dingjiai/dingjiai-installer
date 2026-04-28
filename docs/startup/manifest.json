@@ -33,16 +33,16 @@
     },
     {
       "path": "flows/windows.cmd",
-      "sha256": "27882c3fadecad9bbb8dd327510edb02f68d759e1aa6a16f56ba8c97b3dfb5ce",
+      "sha256": "3992f8fc81b02978a35a97bb5a9358014976c3b7354ad06326d745f7e52a222a",
       "required": true
     },
     {
-      "path": "actions/winget.cmd",
+      "path": "actions/winget/winget.cmd",
       "sha256": "d946f1743f63c575ab77e0a408443b2d16fa87497d2f4dfce712691de4178448",
       "required": false
     },
     {
-      "path": "actions/winget.ps1",
+      "path": "actions/winget/winget.ps1",
       "sha256": "2c95f2b42eb879b807322cb624b0623cd9cc314362720a747c84f486e36be9c7",
       "required": false
     }

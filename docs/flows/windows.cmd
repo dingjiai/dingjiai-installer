@@ -66,7 +66,7 @@ exit /b %errorlevel%
 
 :run_action
 if /I "%~1"=="A" (
-  call "%PAYLOAD_ROOT%\actions\winget.cmd" ensure -FlowName install -CheckpointName winget
+  call "%PAYLOAD_ROOT%\actions\winget\winget.cmd" ensure -FlowName install -CheckpointName winget
   exit /b %errorlevel%
 )
 echo NOT_IMPLEMENTED: unknown action %~1
